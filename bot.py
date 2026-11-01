@@ -33,9 +33,10 @@ def self_ping():
 # دیتابیس‌های موقت در حافظه
 users_db = {}          # chat_id -> nickname
 wallets = {}           # chat_id -> coins
-channels_db = []       # لیست کانال‌های ثبت شده
+channels_db = []       # لیست کانال‌های ثبت شده [{"owner": id, "channel": "@name"}]
 waiting_for_name = set()
 waiting_for_channel = set()
+user_task = {}         # نگهداری کانالی که کاربر در حال حاضر باید در آن عضو شود
 
 def send_message_with_reply_keyboard(chat_id, text, keyboard=None):
     url = f"{BASE_URL}/sendMessage"
@@ -90,7 +91,6 @@ def bot_main():
                         show_main_menu(chat_id)
                     else:
                         waiting_for_name.add(chat_id)
-                        # اصلاح شد: دیگر اسم خاصی در اینجا برده نمی‌شود
                         send_message_with_reply_keyboard(chat_id, "سلام! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
                 
                 elif chat_id in waiting_for_name:
@@ -114,8 +114,7 @@ def bot_main():
                         wallets[chat_id] -= 10
                         channels_db.append({
                             "owner": chat_id,
-                            "channel": channel_username,
-                            "target": 5
+                            "channel": channel_username
                         })
                         waiting_for_channel.remove(chat_id)
                         send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۱۰ سکه از حساب شما کسر گردید. 🪙")
@@ -126,11 +125,40 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست! (حداقل ۱۰ سکه نیاز است)")
                     else:
                         waiting_for_channel.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):")
+                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال زیر را ارسال کنید (مثلاً @YourChannel):")
                 
-                elif text == "👤 پروفایل من" or text == "💰 دریافت سکه":
-                    if text == "💰 دریافت سکه":
-                        send_message_with_reply_keyboard(chat_id, "💡 بخش دریافت سکه به زودی فعال می‌شود! (در حال توسعه 🚀)")
+                elif text == "💰 دریافت سکه":
+                    # پیدا کردن کانالی که کاربر خودش صاحبش نباشد
+                    available_channels = [c for c in channels_db if c["owner"] != chat_id]
+                    if not available_channels:
+                        send_message_with_reply_keyboard(chat_id, "📭 در حال حاضر هیچ کانالی برای عضویت وجود ندارد. لطفاً بعداً دوباره امتحان کنید یا خودت کانال ثبت کن!")
+                        show_main_menu(chat_id)
+                    else:
+                        # فعلاً اولین کانال لیست رو به عنوان کار به کاربر می‌دهیم
+                        target_channel = available_channels[0]["channel"]
+                        user_task[chat_id] = target_channel
+                        
+                        earn_keyboard = [
+                            [{"text": "✅ بررسی عضویت"}],
+                            [{"text": "🔙 بازگشت به منوی اصلی"}]
+                        ]
+                        msg = f"📢 لطفاً در کانال زیر عضو شوید:\n\n{target_channel}\n\nپس از عضویت، روی دکمه «✅ بررسی عضویت» بزنید تا ۵ سکه هدیه بگیرید! 🪙"
+                        send_message_with_reply_keyboard(chat_id, msg, earn_keyboard)
+                
+                elif text == "✅ بررسی عضویت":
+                    if chat_id in user_task:
+                        # پاداش عضویت
+                        wallets[chat_id] = wallets.get(chat_id, 0) + 5
+                        del user_task[chat_id]
+                        send_message_with_reply_keyboard(chat_id, "🎉 تبریک! عضویت شما تایید شد و ۵ سکه به کیف پول شما اضافه گردید! 🪙✨")
+                        show_main_menu(chat_id)
+                    else:
+                        send_message_with_reply_keyboard(chat_id, "⚠️ شما در حال حاضر در دستوری برای دریافت سکه نیستید.")
+                        show_main_menu(chat_id)
+                
+                elif text == "👤 پروفایل من" or text == "🔙 بازگشت به منوی اصلی":
+                    if chat_id in user_task:
+                        del user_task[chat_id]
                     show_main_menu(chat_id)
                 
                 else:
