@@ -36,7 +36,7 @@ wallets = {}           # chat_id -> coins
 campaigns_db = []      # لیست کمپین‌ها: [{"owner": id, "channel": "@name", "remaining_views": 25}]
 waiting_for_name = set()
 waiting_for_channel = set()
-user_task = {}         # نگهداری کانالی که کاربر در حال حاضر باید در آن عضو شود (حاوی اطلاعات کمپین)
+user_task = {}         # نگهداری کانالی که کاربر در حال حاضر باید در آن عضو شود
 
 def send_message_with_reply_keyboard(chat_id, text, keyboard=None):
     url = f"{BASE_URL}/sendMessage"
@@ -62,6 +62,30 @@ def get_updates(offset=None):
     except Exception as e:
         print(f"Error fetching updates: {e}")
     return []
+
+# تابع بررسی واقعی عضویت کاربر در کانال از طریق API بله
+def check_user_membership(channel_username, user_id):
+    url = f"{BASE_URL}/getChatMember"
+    params = {
+        "chat_id": channel_username,
+        "user_id": user_id
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                status = data.get("result", {}).get("status")
+                # وضعیاتی که یعنی کاربر عضو کانال است
+                if status in ["member", "administrator", "creator"]:
+                    return True
+    except Exception as e:
+        print(f"Error checking membership: {e}")
+    
+    # به طور پیش‌فرض اگر خطا داد یا ربات ادمین نبود، برای جلوگیری از گیر کردن، 
+    # در محیط تستی می‌تونید بررسی کنید (یا در صورت نیاز سخت‌گیرانه‌تر عمل کنید).
+    # اینجا اگر ادمین نبوده یا ارور داده، برای اینکه ربات کرش نکند False برمی‌گردانیم.
+    return False
 
 def show_main_menu(chat_id):
     if chat_id in waiting_for_name:
@@ -127,7 +151,6 @@ def bot_main():
                     if not channel_username.startswith("@"):
                         send_message_with_reply_keyboard(chat_id, "⚠️ آیدی کانال باید با @ شروع شود. دوباره تلاش کنید:")
                     else:
-                        # کسر ۵۰ سکه و ایجاد کمپین با ۲۵ سهمیه نمایش
                         wallets[chat_id] -= 50
                         campaigns_db.append({
                             "owner": chat_id,
@@ -135,19 +158,18 @@ def bot_main():
                             "remaining_views": 25
                         })
                         waiting_for_channel.remove(chat_id)
-                        send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۵۰ سکه کسر گردید و کانال شما برای **۲۵ کاربر دیگر** جهت عضویت نمایش داده خواهد شد. 🎯🪙")
+                        send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۵۰ سکه کسر گردید و کانال شما برای **۲۵ کاربر دیگر** جهت عضویت نمایش داده خواهد شد. 🎯🪙\n\n*(توجه: حتماً ربات را ادمین کانال خود کنید تا بررسی عضویت به درست کار کند)*")
                         show_main_menu(chat_id)
                 
                 elif text == "📢 ثبت کانال جدید (جذب ممبر)":
                     if wallets.get(chat_id, 0) < 50:
-                        send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست!\n(برای دریافت ۲۵ ممبر/پیشنهاد، حداقل **۵۰ سکه** نیاز دارید. با دکمه «دریافت سکه» موجودیتان را افزایش دهید).")
+                        send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست!\n(برای دریافت ۲۵ ممبر/پیشنهاد، حداقل **۵۰ سکه** نیاز دارید).")
                     else:
                         waiting_for_channel.add(chat_id)
                         back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
                         send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):\n\n*(هزینه: ۵۰ سکه برای ۲۵ پیشنهاد عضویت)*", back_kb)
                 
                 elif text == "💰 دریافت سکه":
-                    # پیدا کردن کمپین‌هایی که متعلق به کاربر نیستند و هنوز سهمیه نمایش دارند
                     available_campaigns = [c for c in campaigns_db if c["owner"] != chat_id and c["remaining_views"] > 0]
                     if not available_campaigns:
                         send_message_with_reply_keyboard(chat_id, "📭 در حال حاضر هیچ کانالی برای عضویت وجود ندارد. لطفاً بعداً دوباره امتحان کنید!")
@@ -166,20 +188,27 @@ def bot_main():
                 elif text == "✅ بررسی عضویت":
                     if chat_id in user_task:
                         target_campaign = user_task[chat_id]
+                        channel_to_check = target_campaign['channel']
                         
-                        # پاداش به کاربر
-                        wallets[chat_id] = wallets.get(chat_id, 0) + 5
+                        # بررسی واقعی عضویت کاربر در کانال
+                        is_member = check_user_membership(channel_to_check, chat_id)
                         
-                        # کم کردن یک واحد از سهمیه کمپین صاحب کانال
-                        target_campaign["remaining_views"] -= 1
-                        
-                        # پاکسازی کمپین‌های تمام‌شده
-                        if target_campaign["remaining_views"] <= 0 and target_campaign in campaigns_db:
-                            campaigns_db.remove(target_campaign)
-                        
-                        del user_task[chat_id]
-                        send_message_with_reply_keyboard(chat_id, "🎉 تبریک! عضویت شما تایید شد و ۵ سکه به کیف پول شما اضافه گردید! 🪙✨")
-                        show_main_menu(chat_id)
+                        if is_member:
+                            # پاداش به کاربر
+                            wallets[chat_id] = wallets.get(chat_id, 0) + 5
+                            
+                            # کم کردن یک واحد از سهمیه کمپین صاحب کانال
+                            target_campaign["remaining_views"] -= 1
+                            
+                            # پاکسازی کمپین‌های تمام‌شده
+                            if target_campaign["remaining_views"] <= 0 and target_campaign in campaigns_db:
+                                campaigns_db.remove(target_campaign)
+                            
+                            del user_task[chat_id]
+                            send_message_with_reply_keyboard(chat_id, "🎉 تبریک! عضویت شما تایید شد و ۵ سکه به کیف پول شما اضافه گردید! 🪙✨")
+                            show_main_menu(chat_id)
+                        else:
+                            send_message_with_reply_keyboard(chat_id, "❌ شما هنوز در کانال مورد نظر عضو نشده‌اید!\nلطفاً اول در کانال عضو شوید و سپس دوباره روی «✅ بررسی عضویت» بزنید.")
                     else:
                         send_message_with_reply_keyboard(chat_id, "⚠️ شما در حال حاضر در دستوری برای دریافت سکه نیستید.")
                         show_main_menu(chat_id)
@@ -188,7 +217,6 @@ def bot_main():
                     nickname = users_db.get(chat_id, "کاربر")
                     coins = wallets.get(chat_id, 0)
                     
-                    # استخراج کانال‌ها و سهمیه‌های باقی‌مانده‌ی کاربر
                     my_campaigns_info = []
                     for c in campaigns_db:
                         if c["owner"] == chat_id:
