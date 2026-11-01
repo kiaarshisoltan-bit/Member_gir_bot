@@ -7,9 +7,12 @@ app = Flask(__name__)
 TOKEN = os.environ.get("BALE_TOKEN", "546304737:3dWovOidcSZK6SPZbwzjspTZlUwA32MUU0E")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    data = request.get_json()
+    if request.method == "GET":
+        return "Webhook endpoint is active!", 200
+        
+    data = request.get_json(silent=True)
     if data and "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
