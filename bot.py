@@ -4,20 +4,18 @@ import requests
 
 app = Flask(__name__)
 
-# توکن ربات که از BotFather در بله گرفته‌ای
-TOKEN = os.environ.get("BALE_TOKEN", "YOUR_BOT_TOKEN_HERE")
+TOKEN = os.environ.get("BALE_TOKEN", "546304737:3dWovOidcSZK6SPZbwzjspTZlUwA32MUU0E")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     if data and "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "")
         
-        # پاسخ ساده به دستور /start
         if text == "/start":
-            send_message(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید. 🚀\nبرای شروع کانال خود را ثبت کنید یا با عضویت در کانال‌ها سکه بگیرید.")
+            send_message(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید. 🚀")
         else:
             send_message(chat_id, f"پیام شما دریافت شد: {text}")
             
