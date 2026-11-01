@@ -5,13 +5,12 @@ import requests
 TOKEN = os.environ.get("BALE_TOKEN", "546304737:3dWovOidcSZK6SPZbwzjspTZlUwA32MUU0E")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-# دیتابیس موقت در حافظه
-# ساختار: users[chat_id] = "nickname"
-users_db = {}
-
-# نگهداری وضعیت کاربرانی که در حال وارد کردن نام هستند
-# ساختار: waiting_for_name[chat_id] = True
+# دیتابیس‌های موقت در حافظه
+users_db = {}          # chat_id -> nickname
+wallets = {}           # chat_id -> coins (موجودی سکه)
+channels_db = []       # لیستی از دیکشنری‌های کانال‌ها
 waiting_for_name = set()
+waiting_for_channel = set() # کاربرانی که در حال ارسال آیدی کانال هستند
 
 def send_message(chat_id, text):
     url = f"{BASE_URL}/sendMessage"
@@ -33,7 +32,7 @@ def get_updates(offset=None):
     return []
 
 def main():
-    print("Bot is starting polling with Nickname registration...")
+    print("Bot is starting with Channel Registration feature...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -44,38 +43,67 @@ def main():
                 chat_id = update["message"]["chat"]["id"]
                 text = update["message"].get("text", "").strip()
                 
-                # ۱. اگر کاربر دستور /start را زد
+                # ۱. دستور شروع (/start)
                 if text == "/start":
                     if chat_id in users_db:
-                        # اگر قبلاً ثبت‌نام کرده بود
-                        send_message(chat_id, f"سلام {users_db[chat_id]} عزیز! مجدداً خوش آمدی. 🚀\nاسم فعلی‌ات در سیستم ثبت شده.")
+                        send_message(chat_id, f"سلام {users_db[chat_id]} عزیز! 🚀\nموجودی سکه شما: {wallets.get(chat_id, 0)} سکه\n\nدستورات:\n/register_channel - ثبت کانال جدید\n/balance - موجودی سکه")
                     else:
-                        # اگر کاربر جدید است، منتظر نام می‌شویم
                         waiting_for_name.add(chat_id)
                         send_message(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
                 
-                # ۲. اگر کاربر در مرحله وارد کردن نام بود
+                # ۲. مرحله ورود نام مستعار
                 elif chat_id in waiting_for_name:
                     new_name = text
-                    
-                    # بررسی اینکه آیا این نام قبلاً توسط کسی انتخاب شده است یا نه
                     if new_name in users_db.values():
                         send_message(chat_id, "⚠️ این نام قبلاً توسط کاربر دیگری انتخاب شده است! لطفاً یک نام دیگر انتخاب کن:")
                     elif len(new_name) < 3:
                         send_message(chat_id, "⚠️ نام انتخابی خیلی کوتاه است. لطفاً حداقل ۳ کاراکتر وارد کن:")
                     else:
-                        # ثبت نام در دیتابیس
                         users_db[chat_id] = new_name
+                        wallets[chat_id] = 50  # هدیه اولیه: ۵۰ سکه
                         waiting_for_name.remove(chat_id)
-                        send_message(chat_id, f"🎉 عالیه! نام **{new_name}** با موفقیت برای شما ثبت شد.\nاکنون حساب کاربری‌تان آماده است.")
+                        send_message(chat_id, f"🎉 عالیه! نام **{new_name}** ثبت شد و ۵۰ سکه هدیه اولیه به حساب شما واریز گردید! 🎁\n\nبرای ثبت کانال از دستور /register_channel استفاده کنید.")
                 
-                # ۳. بقیه پیام‌ها
+                # ۳. دستور موجودی
+                elif text == "/balance":
+                    if chat_id in users_db:
+                        send_message(chat_id, f"💰 موجودی شما: {wallets.get(chat_id, 0)} سکه")
+                    else:
+                        send_message(chat_id, "اول باید ثبت‌نام کنی! /start رو بزن.")
+
+                # ۴. دستور ثبت کانال
+                elif text == "/register_channel":
+                    if chat_id not in users_db:
+                        send_message(chat_id, "ابتدا با دستور /start ثبت‌نام کنید.")
+                    elif wallets.get(chat_id, 0) < 10:
+                        send_message(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست! (حداقل ۱۰ سکه نیاز است)")
+                    else:
+                        waiting_for_channel.add(chat_id)
+                        send_message(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):")
+
+                # ۵. دریافت آیدی کانال از کاربر
+                elif chat_id in waiting_for_channel:
+                    channel_username = text
+                    if not channel_username.startswith("@"):
+                        send_message(chat_id, "⚠️ آیدی کانال باید با @ شروع شود. دوباره تلاش کنید:")
+                    else:
+                        # کسر سکه و ثبت کانال
+                        wallets[chat_id] -= 10
+                        channels_db.append({
+                            "owner": chat_id,
+                            "channel": channel_username,
+                            "target": 5 # فرضاً فعلا ۵ ممبر درخواستی
+                        })
+                        waiting_for_channel.remove(chat_id)
+                        send_message(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۱۰ سکه از حساب شما کسر گردید.\nموجودی جدید: {wallets[chat_id]} سکه 🪙")
+                
+                # ۶. پیام‌های متفرقه
                 else:
                     if chat_id in users_db:
-                        send_message(chat_id, f"کاربر {users_db[chat_id]}، پیام شما دریافت شد: {text}")
+                        send_message(chat_id, "دستور نامعتبر. برای راهنمایی /start را بفرستید.")
                     else:
                         waiting_for_name.add(chat_id)
-                        send_message(chat_id, "لطفاً اول با دستور /start یا ارسال نام، ثبت‌نام کن.")
+                        send_message(chat_id, "لطفاً اول یک نام مستعار برای خودت بفرست.")
                         
         time.sleep(1)
 
