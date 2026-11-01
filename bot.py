@@ -1,9 +1,34 @@
 import os
 import time
+import threading
 import requests
+from flask import Flask
 
-TOKEN = os.environ.get("BALE_TOKEN", "546304737:3dWovOidcSZK6SPZbwzjspTZlUwA32MUU0E")
+# تنظیمات اصلی
+TOKEN = os.environ.get("BALE_TOKEN", "*******")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
+
+# راه‌اندازی Flask برای بیدار نگه داشتن رندر
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is active and running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# تابع خودکار پینگ کردن برای جلوگیری از خوابیدن رندر
+def self_ping():
+    while True:
+        try:
+            time.sleep(300)  # هر ۵ دقیقه یک بار
+            response = requests.get(RENDER_URL)
+            print(f"Self-ping successful: {response.status_code}")
+        except Exception as e:
+            print(f"Self-ping error: {e}")
 
 # دیتابیس‌های موقت در حافظه
 users_db = {}          # chat_id -> nickname
@@ -21,8 +46,8 @@ def send_message_with_reply_keyboard(chat_id, text, keyboard=None):
     if keyboard:
         payload["reply_markup"] = {
             "keyboard": keyboard,
-            "resize_keyboard": True,   # دکمه‌ها بزرگ و اندازه مناسب بشن
-            "one_time_keyboard": False # دکمه‌ها پایین صفحه باقی بمونن
+            "resize_keyboard": True,
+            "one_time_keyboard": False
         }
     requests.post(url, json=payload)
 
@@ -42,15 +67,14 @@ def show_main_menu(chat_id):
     coins = wallets.get(chat_id, 0)
     text = f"سلام {nickname} عزیز! 🚀\nموجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را از منوی پایین انتخاب کنید:"
     
-    # دکمه‌های معمولی پایین صفحه (Reply Keyboard)
     keyboard = [
         [{"text": "📢 ثبت کانال جدید"}],
         [{"text": "💰 دریافت سکه"}, {"text": "👤 پروفایل من"}]
     ]
     send_message_with_reply_keyboard(chat_id, text, keyboard)
 
-def main():
-    print("Bot is starting with Reply Keyboard support...")
+def bot_main():
+    print("Bot polling is started...")
     offset = None
     while True:
         updates = get_updates(offset)
@@ -66,7 +90,6 @@ def main():
                         show_main_menu(chat_id)
                     else:
                         waiting_for_name.add(chat_id)
-                        # در هنگام ثبت نام دکمه‌ها رو بر می‌داریم تا اول نامش رو بفرسته
                         send_message_with_reply_keyboard(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
                 
                 elif chat_id in waiting_for_name:
@@ -97,7 +120,6 @@ def main():
                         send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۱۰ سکه از حساب شما کسر گردید. 🪙")
                         show_main_menu(chat_id)
                 
-                # مدیریت کلیک روی دکمه‌های منوی پایین
                 elif text == "📢 ثبت کانال جدید":
                     if wallets.get(chat_id, 0) < 10:
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست! (حداقل ۱۰ سکه نیاز است)")
@@ -120,4 +142,15 @@ def main():
         time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    # اجرای وب‌سرور فلاسگ در یک ترد جداگانه
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # اجرای ترد خودکار پینگ‌کننده
+    ping_thread = threading.Thread(target=self_ping)
+    ping_thread.daemon = True
+    ping_thread.start()
+
+    # اجرای اصلی ربات
+    bot_main()
