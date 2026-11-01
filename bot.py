@@ -64,6 +64,14 @@ def get_updates(offset=None):
     return []
 
 def show_main_menu(chat_id):
+    # پاک کردن وضعیت‌های انتظار در صورت بازگشت به منوی اصلی
+    if chat_id in waiting_for_name:
+        waiting_for_name.remove(chat_id)
+    if chat_id in waiting_for_channel:
+        waiting_for_channel.remove(chat_id)
+    if chat_id in user_task:
+        del user_task[chat_id]
+
     nickname = users_db.get(chat_id, "کاربر")
     coins = wallets.get(chat_id, 0)
     text = f"سلام {nickname} عزیز! 🚀\nموجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را از منوی پایین انتخاب کنید:"
@@ -86,12 +94,22 @@ def bot_main():
                 chat_id = update["message"]["chat"]["id"]
                 text = update["message"].get("text", "").strip()
                 
+                # دکمه عمومی بازگشت به منوی اصلی در هر حالتی
+                if text == "🔙 بازگشت به منوی اصلی":
+                    if chat_id in users_db:
+                        show_main_menu(chat_id)
+                    else:
+                        waiting_for_name.discard(chat_id)
+                        send_message_with_reply_keyboard(chat_id, "به منوی اصلی برگشتید. برای شروع /start را بزنید.")
+                    continue
+
                 if text == "/start":
                     if chat_id in users_db:
                         show_main_menu(chat_id)
                     else:
                         waiting_for_name.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "سلام! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
+                        back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
+                        send_message_with_reply_keyboard(chat_id, "سلام! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:", back_kb)
                 
                 elif chat_id in waiting_for_name:
                     new_name = text
@@ -125,16 +143,15 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست! (حداقل ۱۰ سکه نیاز است)")
                     else:
                         waiting_for_channel.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال زیر را ارسال کنید (مثلاً @YourChannel):")
+                        back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
+                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):", back_kb)
                 
                 elif text == "💰 دریافت سکه":
-                    # پیدا کردن کانالی که کاربر خودش صاحبش نباشد
                     available_channels = [c for c in channels_db if c["owner"] != chat_id]
                     if not available_channels:
                         send_message_with_reply_keyboard(chat_id, "📭 در حال حاضر هیچ کانالی برای عضویت وجود ندارد. لطفاً بعداً دوباره امتحان کنید یا خودت کانال ثبت کن!")
                         show_main_menu(chat_id)
                     else:
-                        # فعلاً اولین کانال لیست رو به عنوان کار به کاربر می‌دهیم
                         target_channel = available_channels[0]["channel"]
                         user_task[chat_id] = target_channel
                         
@@ -147,7 +164,6 @@ def bot_main():
                 
                 elif text == "✅ بررسی عضویت":
                     if chat_id in user_task:
-                        # پاداش عضویت
                         wallets[chat_id] = wallets.get(chat_id, 0) + 5
                         del user_task[chat_id]
                         send_message_with_reply_keyboard(chat_id, "🎉 تبریک! عضویت شما تایید شد و ۵ سکه به کیف پول شما اضافه گردید! 🪙✨")
@@ -156,9 +172,19 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "⚠️ شما در حال حاضر در دستوری برای دریافت سکه نیستید.")
                         show_main_menu(chat_id)
                 
-                elif text == "👤 پروفایل من" or text == "🔙 بازگشت به منوی اصلی":
-                    if chat_id in user_task:
-                        del user_task[chat_id]
+                elif text == "👤 پروفایل من":
+                    nickname = users_db.get(chat_id, "کاربر")
+                    coins = wallets.get(chat_id, 0)
+                    my_channels = [c["channel"] for c in channels_db if c["owner"] == chat_id]
+                    channels_list = ", ".join(my_channels) if my_channels else "ندارد"
+                    
+                    profile_text = (
+                        f"👤 **اطلاعات پروفایل شما:**\n\n"
+                        f"🔹 نام مستعار: {nickname}\n"
+                        f"🪙 موجودی سکه: {coins}\n"
+                        f"📢 کانال‌های ثبت‌شده: {channels_list}"
+                    )
+                    send_message_with_reply_keyboard(chat_id, profile_text)
                     show_main_menu(chat_id)
                 
                 else:
@@ -166,7 +192,8 @@ def bot_main():
                         show_main_menu(chat_id)
                     else:
                         waiting_for_name.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "لطفاً اول یک نام مستعار برای خودت بفرست.")
+                        back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
+                        send_message_with_reply_keyboard(chat_id, "لطفاً اول یک نام مستعار برای خودت بفرست:", back_kb)
 
         time.sleep(1)
 
