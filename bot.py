@@ -90,7 +90,8 @@ def bot_main():
                         show_main_menu(chat_id)
                     else:
                         waiting_for_name.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
+                        # اصلاح شد: دیگر اسم خاصی در اینجا برده نمی‌شود
+                        send_message_with_reply_keyboard(chat_id, "سلام! به ربات ممبرگیر خوش آمدید. 🚀\nلطفاً یک **نام مستعار (Nickname)** یکتا برای خودت ارسال کن:")
                 
                 elif chat_id in waiting_for_name:
                     new_name = text
@@ -129,7 +130,7 @@ def bot_main():
                 
                 elif text == "👤 پروفایل من" or text == "💰 دریافت سکه":
                     if text == "💰 دریافت سکه":
-                        send_message_with_reply_keyboard(chat_id, "💡 بخش دریافت سکه به زودی فعال می‌شود! (در حال توسعه توسط کیا 🚀)")
+                        send_message_with_reply_keyboard(chat_id, "💡 بخش دریافت سکه به زودی فعال می‌شود! (در حال توسعه 🚀)")
                     show_main_menu(chat_id)
                 
                 else:
@@ -142,15 +143,12 @@ def bot_main():
         time.sleep(1)
 
 if __name__ == "__main__":
-    # اجرای وب‌سرور فلاسگ در یک ترد جداگانه
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    # اجرای ترد خودکار پینگ‌کننده
     ping_thread = threading.Thread(target=self_ping)
     ping_thread.daemon = True
     ping_thread.start()
 
-    # اجرای اصلی ربات
     bot_main()
