@@ -33,10 +33,10 @@ def self_ping():
 # دیتابیس‌های موقت در حافظه
 users_db = {}          # chat_id -> nickname
 wallets = {}           # chat_id -> coins
-channels_db = []       # لیست کانال‌های ثبت شده [{"owner": id, "channel": "@name"}]
+campaigns_db = []      # لیست کمپین‌ها: [{"owner": id, "channel": "@name", "remaining_views": 25}]
 waiting_for_name = set()
 waiting_for_channel = set()
-user_task = {}         # نگهداری کانالی که کاربر در حال حاضر باید در آن عضو شود
+user_task = {}         # نگهداری کانالی که کاربر در حال حاضر باید در آن عضو شود (حاوی اطلاعات کمپین)
 
 def send_message_with_reply_keyboard(chat_id, text, keyboard=None):
     url = f"{BASE_URL}/sendMessage"
@@ -64,7 +64,6 @@ def get_updates(offset=None):
     return []
 
 def show_main_menu(chat_id):
-    # پاک کردن وضعیت‌های انتظار در صورت بازگشت به منوی اصلی
     if chat_id in waiting_for_name:
         waiting_for_name.remove(chat_id)
     if chat_id in waiting_for_channel:
@@ -77,7 +76,7 @@ def show_main_menu(chat_id):
     text = f"سلام {nickname} عزیز! 🚀\nموجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را از منوی پایین انتخاب کنید:"
     
     keyboard = [
-        [{"text": "📢 ثبت کانال جدید"}],
+        [{"text": "📢 ثبت کانال جدید (جذب ممبر)"}],
         [{"text": "💰 دریافت سکه"}, {"text": "👤 پروفایل من"}]
     ]
     send_message_with_reply_keyboard(chat_id, text, keyboard)
@@ -94,7 +93,6 @@ def bot_main():
                 chat_id = update["message"]["chat"]["id"]
                 text = update["message"].get("text", "").strip()
                 
-                # دکمه عمومی بازگشت به منوی اصلی در هر حالتی
                 if text == "🔙 بازگشت به منوی اصلی":
                     if chat_id in users_db:
                         show_main_menu(chat_id)
@@ -129,42 +127,56 @@ def bot_main():
                     if not channel_username.startswith("@"):
                         send_message_with_reply_keyboard(chat_id, "⚠️ آیدی کانال باید با @ شروع شود. دوباره تلاش کنید:")
                     else:
-                        wallets[chat_id] -= 10
-                        channels_db.append({
+                        # کسر ۵۰ سکه و ایجاد کمپین با ۲۵ سهمیه نمایش
+                        wallets[chat_id] -= 50
+                        campaigns_db.append({
                             "owner": chat_id,
-                            "channel": channel_username
+                            "channel": channel_username,
+                            "remaining_views": 25
                         })
                         waiting_for_channel.remove(chat_id)
-                        send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۱۰ سکه از حساب شما کسر گردید. 🪙")
+                        send_message_with_reply_keyboard(chat_id, f"✅ کانال {channel_username} با موفقیت ثبت شد!\n۵۰ سکه کسر گردید و کانال شما برای **۲۵ کاربر دیگر** جهت عضویت نمایش داده خواهد شد. 🎯🪙")
                         show_main_menu(chat_id)
                 
-                elif text == "📢 ثبت کانال جدید":
-                    if wallets.get(chat_id, 0) < 10:
-                        send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست! (حداقل ۱۰ سکه نیاز است)")
+                elif text == "📢 ثبت کانال جدید (جذب ممبر)":
+                    if wallets.get(chat_id, 0) < 50:
+                        send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست!\n(برای دریافت ۲۵ ممبر/پیشنهاد، حداقل **۵۰ سکه** نیاز دارید. با دکمه «دریافت سکه» موجودیتان را افزایش دهید).")
                     else:
                         waiting_for_channel.add(chat_id)
                         back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
-                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):", back_kb)
+                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):\n\n*(هزینه: ۵۰ سکه برای ۲۵ پیشنهاد عضویت)*", back_kb)
                 
                 elif text == "💰 دریافت سکه":
-                    available_channels = [c for c in channels_db if c["owner"] != chat_id]
-                    if not available_channels:
-                        send_message_with_reply_keyboard(chat_id, "📭 در حال حاضر هیچ کانالی برای عضویت وجود ندارد. لطفاً بعداً دوباره امتحان کنید یا خودت کانال ثبت کن!")
+                    # پیدا کردن کمپین‌هایی که متعلق به کاربر نیستند و هنوز سهمیه نمایش دارند
+                    available_campaigns = [c for c in campaigns_db if c["owner"] != chat_id and c["remaining_views"] > 0]
+                    if not available_campaigns:
+                        send_message_with_reply_keyboard(chat_id, "📭 در حال حاضر هیچ کانالی برای عضویت وجود ندارد. لطفاً بعداً دوباره امتحان کنید!")
                         show_main_menu(chat_id)
                     else:
-                        target_channel = available_channels[0]["channel"]
-                        user_task[chat_id] = target_channel
+                        target_campaign = available_campaigns[0]
+                        user_task[chat_id] = target_campaign
                         
                         earn_keyboard = [
                             [{"text": "✅ بررسی عضویت"}],
                             [{"text": "🔙 بازگشت به منوی اصلی"}]
                         ]
-                        msg = f"📢 لطفاً در کانال زیر عضو شوید:\n\n{target_channel}\n\nپس از عضویت، روی دکمه «✅ بررسی عضویت» بزنید تا ۵ سکه هدیه بگیرید! 🪙"
+                        msg = f"📢 لطفاً در کانال زیر عضو شوید:\n\n{target_campaign['channel']}\n\nپس از عضویت، روی دکمه «✅ بررسی عضویت» بزنید تا ۵ سکه هدیه بگیرید! 🪙"
                         send_message_with_reply_keyboard(chat_id, msg, earn_keyboard)
                 
                 elif text == "✅ بررسی عضویت":
                     if chat_id in user_task:
+                        target_campaign = user_task[chat_id]
+                        
+                        # پاداش به کاربر
                         wallets[chat_id] = wallets.get(chat_id, 0) + 5
+                        
+                        # کم کردن یک واحد از سهمیه کمپین صاحب کانال
+                        target_campaign["remaining_views"] -= 1
+                        
+                        # پاکسازی کمپین‌های تمام‌شده
+                        if target_campaign["remaining_views"] <= 0 and target_campaign in campaigns_db:
+                            campaigns_db.remove(target_campaign)
+                        
                         del user_task[chat_id]
                         send_message_with_reply_keyboard(chat_id, "🎉 تبریک! عضویت شما تایید شد و ۵ سکه به کیف پول شما اضافه گردید! 🪙✨")
                         show_main_menu(chat_id)
@@ -175,14 +187,20 @@ def bot_main():
                 elif text == "👤 پروفایل من":
                     nickname = users_db.get(chat_id, "کاربر")
                     coins = wallets.get(chat_id, 0)
-                    my_channels = [c["channel"] for c in channels_db if c["owner"] == chat_id]
-                    channels_list = ", ".join(my_channels) if my_channels else "ندارد"
+                    
+                    # استخراج کانال‌ها و سهمیه‌های باقی‌مانده‌ی کاربر
+                    my_campaigns_info = []
+                    for c in campaigns_db:
+                        if c["owner"] == chat_id:
+                            my_campaigns_info.append(f"{c['channel']} (باقی‌مانده پیشنهاد: {c['remaining_views']})")
+                    
+                    channels_list = "\n".join(my_campaigns_info) if my_campaigns_info else "ندارد"
                     
                     profile_text = (
                         f"👤 **اطلاعات پروفایل شما:**\n\n"
                         f"🔹 نام مستعار: {nickname}\n"
-                        f"🪙 موجودی سکه: {coins}\n"
-                        f"📢 کانال‌های ثبت‌شده: {channels_list}"
+                        f"🪙 موجودی سکه: {coins}\n\n"
+                        f"📢 **کانال‌های در حال جذب شما:**\n{channels_list}"
                     )
                     send_message_with_reply_keyboard(chat_id, profile_text)
                     show_main_menu(chat_id)
