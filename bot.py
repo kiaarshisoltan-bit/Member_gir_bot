@@ -138,7 +138,7 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "⚠️ نام انتخابی خیلی کوتاه است. لطفاً حداقل ۳ کاراکتر وارد کن:")
                     else:
                         users_db[chat_id] = new_name
-                        wallets[chat_id] = 50  # هدیه اولیه
+                        wallets[chat_id] = 50  
                         waiting_for_name.remove(chat_id)
                         send_message_with_reply_keyboard(chat_id, f"🎉 عالیه! نام **{new_name}** ثبت شد و ۵۰ سکه هدیه اولیه دریافت کردید! 🎁")
                         show_main_menu(chat_id)
@@ -160,7 +160,6 @@ def bot_main():
                 
                 elif chat_id in waiting_for_deletion:
                     channel_to_delete = text
-                    # جستجوی کمپین مربوط به این کاربر با این آیدی
                     found_campaign = None
                     for c in campaigns_db:
                         if c["owner"] == chat_id and c["channel"] == channel_to_delete:
@@ -179,9 +178,28 @@ def bot_main():
                     if wallets.get(chat_id, 0) < 50:
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی سکه شما برای ثبت کانال کافی نیست!\n(برای دریافت ۲۵ ممبر/پیشنهاد، حداقل **۵۰ سکه** نیاز دارید).")
                     else:
+                        # ارسال راهنما قبل از درخواست آیدی
+                        guide_text = (
+                            "📖 *راهنمای ادمین کردن ربات*\n\n"
+                            "برای اینکه ربات بتواند در کانال/گروه شما فعالیت کند، باید آن را ادمین کنید:\n\n"
+                            "1️⃣ وارد کانال/گروه خود شوید\n"
+                            "2️⃣ روی نام کانال/گروه در بالای صفحه کلیک کنید\n"
+                            "3️⃣ گزینه *Administrators* یا *مدیران* را انتخاب کنید\n"
+                            "4️⃣ روی *Add Admin* یا *افزودن مدیر* کلیک کنید\n"
+                            "5️⃣ نام یا یوزرنیم ربات را جستجو کنید\n"
+                            "6️⃣ ربات را انتخاب و دسترسی‌های لازم را فعال کنید\n"
+                            "7️⃣ روی *Save* یا *ذخیره* کلیک کنید\n\n"
+                            "✅ حالا ربات ادمین کانال شماست و می‌توانید آن را ثبت کنید."
+                        )
                         waiting_for_channel.add(chat_id)
                         back_kb = [[{"text": "🔙 بازگشت به منوی اصلی"}]]
-                        send_message_with_reply_keyboard(chat_id, "📢 لطفاً آیدی کانال خود را ارسال کنید (مثلاً @YourChannel):\n\n*(هزینه: ۵۰ سکه برای ۲۵ پیشنهاد عضویت)*", back_kb)
+                        send_message_with_reply_keyboard(chat_id, guide_text, back_kb)
+                        # نکته: در مرحله بعد از دریافت راهنما، کاربر باید آیدی رو بفرسته. 
+                        # اما برای اینکه کاربر گیج نشه، راهنما رو می‌فرستیم و بعد بلافاصله سوال آیدی رو می‌پرسیم.
+                        # برای اینکه کد تمیز بمونه، من مرحله بعد از راهنما رو با یک پیام دیگر مدیریت می‌کنم.
+                        # اما در اینجا راه ساده‌تر اینه که بعد از راهنما، مستقیم بپرسیم:
+                        time.sleep(1)
+                        send_message_with_reply_keyboard(chat_id, "👇\n\nحالا لطفاً **آیدی کانال یا گروه** خود را ارسال کنید (مثلاً @YourChannel):", back_kb)
                 
                 elif text == "📋 لیست کانال‌های من":
                     my_campaigns = [c for c in campaigns_db if c["owner"] == chat_id]
