@@ -10,7 +10,7 @@ TOKEN = os.environ.get("BALE_TOKEN", "*******")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
 
-# اطلاعات جدید تو و کانال
+# اطلاعات ادمین و کانال
 ADMIN_ID = "@kia_karfarma"
 INFO_CHANNEL = "@ettela_resani_member"
 
@@ -22,7 +22,7 @@ wallets = {}
 campaigns_db = []      
 history_db = {}        
 user_task = {}         
-rewarded_info_channel = set() # برای اینکه هر کس فقط یکبار جایزه بگیرد
+rewarded_info_channel = set() # برای جایزه کانال اطلاع‌رسانی
 
 waiting_for_name = set()
 waiting_for_channel = set()
@@ -92,7 +92,7 @@ def show_main_menu(chat_id):
         [{"text": "📢 ثبت کانال جدید (جذب ممبر)"}],
         [{"text": "💰 دریافت سکه"}, {"text": "🎁 دریافت جایزه کانال"}],
         [{"text": "📋 لیست کانال‌های من"}, {"text": "👥 دعوت از دوستان"}],
-        [{"text": "👤 پروفایل من"}]
+        [{"text": "👤 پروفایل من"}, {"text": "📞 پشتیبانی و ارتباط با ما"}]
     ]
     send_message_with_reply_keyboard(chat_id, text, keyboard)
 
@@ -272,12 +272,19 @@ def bot_main():
                     profile_text = (
                         f"👤 پروفایل:\n\n"
                         f"🔹 نام: {nickname}\n"
-                        f"🪙 سکه: {coins}\n"
-                        f"📢 کانال‌های من:\n{channels_str}\n\n"
-                        f"📞 **پشتیبانی:** {ADMIN_ID}\n"
-                        f"📢 **کانال اطلاع‌رسانی:** {INFO_CHANNEL}"
+                        f"🪙 سکه: {coins}\n\n"
+                        f"📢 کانال‌های ثبت شده من:\n{channels_str}"
                     )
                     send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+
+                elif text == "📞 پشتیبانی و ارتباط با ما":
+                    support_text = (
+                        "📞 **ارتباط با پشتیبانی و اطلاع‌رسانی**\n\n"
+                        f"👨‍💻 **پشتیبان اصلی:** {ADMIN_ID}\n"
+                        f"📢 **کانال اطلاع‌رسانی ربات:** {INFO_CHANNEL}\n\n"
+                        "هرگونه سوال، پیشنهاد یا مشکلی دارید می‌توانید به ادمین پیام دهید و برای اطلاع از اخبار و آپدیت‌ها، در کانال اطلاع‌رسانی عضو شوید."
+                    )
+                    send_message_with_reply_keyboard(chat_id, support_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "👥 دعوت از دوستان":
                     invite_code = chat_id
