@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import requests
+import random
 from flask import Flask
 
 # --- تنظیمات اصلی ---
@@ -9,16 +10,20 @@ TOKEN = os.environ.get("BALE_TOKEN", "*******")
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
 
+# اطلاعات جدید تو و کانال
+ADMIN_ID = "@kia_karfarma"
+INFO_CHANNEL = "@ettela_resani_member"
+
 app = Flask(__name__)
 
-# --- دیتابیس‌های در حافظه (In-Memory) ---
-users_db = {}          # ذخیره نام مستعار: {chat_id: "name"}
-wallets = {}           # ذخیره سکه: {chat_id: 50}
-campaigns_db = []      # لیست کانال‌ها: [{"owner": id, "channel": "@id", "remaining_views": 25}]
-history_db = {}        # کانال‌هایی که کاربر دیده: {chat_id: ["@chan1", "@chan2"]}
-user_task = {}         # کانالی که کاربر در حال حاضر دارد در آن کار می‌کند
+# --- دیتابیس‌های در حافظه ---
+users_db = {}          
+wallets = {}           
+campaigns_db = []      
+history_db = {}        
+user_task = {}         
+rewarded_info_channel = set() # برای اینکه هر کس فقط یکبار جایزه بگیرد
 
-# وضعیت‌های مرحله‌ای برای مدیریت جریان گفتگو
 waiting_for_name = set()
 waiting_for_channel = set()
 waiting_for_deletion = set()
@@ -75,7 +80,6 @@ def check_user_membership(channel_username, user_id):
     return False
 
 def show_main_menu(chat_id):
-    # پاکسازی وضعیت‌های موقت هنگام بازگشت به منو
     for s in [waiting_for_name, waiting_for_channel, waiting_for_deletion, 
               waiting_for_referral_code, is_entering_ref_code]:
         if chat_id in s: s.remove(chat_id)
@@ -86,8 +90,9 @@ def show_main_menu(chat_id):
     text = f"سلام {nickname} عزیز! 🚀\n\n💰 موجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
     keyboard = [
         [{"text": "📢 ثبت کانال جدید (جذب ممبر)"}],
-        [{"text": "💰 دریافت سکه"}, {"text": "📋 لیست کانال‌های من"}],
-        [{"text": "👥 دعوت از دوستان"}, {"text": "👤 پروفایل من"}]
+        [{"text": "💰 دریافت سکه"}, {"text": "🎁 دریافت جایزه کانال"}],
+        [{"text": "📋 لیست کانال‌های من"}, {"text": "👥 دعوت از دوستان"}],
+        [{"text": "👤 پروفایل من"}]
     ]
     send_message_with_reply_keyboard(chat_id, text, keyboard)
 
@@ -104,7 +109,7 @@ def bot_main():
                 chat_id = update["message"]["chat"]["id"]
                 text = update["message"].get("text", "").strip()
 
-                # ۱. مدیریت دستور شروع و سیستم دعوت
+                # ۱. شروع و کد دعوت
                 if text == "/start":
                     if chat_id in users_db:
                         show_main_menu(chat_id)
@@ -114,12 +119,12 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "👋 خوش آمدید!\n\nآیا از طرف کسی دعوت شده‌اید و کد دعوت دارید؟", keyboard)
                     continue
 
-                # ۲. مدیریت دکمه بازگشت
+                # ۲. بازگشت
                 if text == "🔙 بازگشت به منوی اصلی" or text == "🔙 بازگشت":
                     show_main_menu(chat_id)
                     continue
 
-                # ۳. فرآیند ثبت‌نام (مرحله به مرحله)
+                # ۳. فرآیند ثبت‌نام
                 if chat_id in waiting_for_referral_code:
                     if text == "❌ خیر، ندارم":
                         waiting_for_referral_code.remove(chat_id)
@@ -154,7 +159,7 @@ def bot_main():
                         show_main_menu(chat_id)
                     continue
 
-                # ۴. منوی اصلی و دستورات آن
+                # ۴. منوی اصلی
                 if text == "📢 ثبت کانال جدید (جذب ممبر)":
                     if wallets.get(chat_id, 0) < 50:
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی شما کمتر از ۵۰ سکه است!")
@@ -181,8 +186,19 @@ def bot_main():
                     else:
                         send_message_with_reply_keyboard(chat_id, "⚠️ آیدی باید با @ شروع شود:")
 
+                elif text == "🎁 دریافت جایزه کانال":
+                    if chat_id in rewarded_info_channel:
+                        send_message_with_reply_keyboard(chat_id, "⚠️ شما قبلاً این جایزه را دریافت کرده‌اید!")
+                    else:
+                        if check_user_membership(INFO_CHANNEL, chat_id):
+                            wallets[chat_id] = wallets.get(chat_id, 0) + 10
+                            rewarded_info_channel.add(chat_id)
+                            send_message_with_reply_keyboard(chat_id, "🎉 تبریک! ۱۰ سکه بابت عضویت در کانال اطلاع‌رسانی دریافت کردید! 🪙")
+                            show_main_menu(chat_id)
+                        else:
+                            send_message_with_reply_keyboard(chat_id, f"❌ شما هنوز عضو کانال {INFO_CHANNEL} نیستید! ابتدا عضو شوید و دوباره تلاش کنید.")
+
                 elif text == "💰 دریافت سکه":
-                    # بررسی جریمه خروج از کانال
                     my_campaigns = [c for c in campaigns_db if c["owner"] == chat_id]
                     for c in my_campaigns:
                         if not check_user_membership(c["channel"], chat_id):
@@ -252,9 +268,16 @@ def bot_main():
                     coins = wallets.get(chat_id, 0)
                     my_c_list = [f"- {c['channel']}" for c in campaigns_db if c["owner"] == chat_id]
                     channels_str = "\n".join(my_c_list) if my_c_list else "ندارد"
-                    profile_text = f"👤 پروفایل:\n\n🔹 نام: {nickname}\n🪙 سکه: {coins}\n\n📢 کانال‌های من:\n{channels_str}"
-                    send_message_with_reply_keyboard(chat_id, profile_text)
-                    show_main_menu(chat_id)
+                    
+                    profile_text = (
+                        f"👤 پروفایل:\n\n"
+                        f"🔹 نام: {nickname}\n"
+                        f"🪙 سکه: {coins}\n"
+                        f"📢 کانال‌های من:\n{channels_str}\n\n"
+                        f"📞 **پشتیبانی:** {ADMIN_ID}\n"
+                        f"📢 **کانال اطلاع‌رسانی:** {INFO_CHANNEL}"
+                    )
+                    send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "👥 دعوت از دوستان":
                     invite_code = chat_id
