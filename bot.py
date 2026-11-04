@@ -12,8 +12,8 @@ BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
 
 ADMIN_ID = "@kia_karfarma"
-# ⚠️ مهم: آیدی عددی (chat_id) تلگرام/بله خودت را اینجا وارد کن تا دکمه پنل ادمین برایت نمایش داده شود
-ADMIN_CHAT_ID =  1708788049 # مثال: 123456789
+# ⚠️ مهم: آیدی عددی (chat_id) بله خودت را اینجا وارد کن تا دکمه پنل ادمین برایت نمایش داده شود
+ADMIN_CHAT_ID = 1708788049  # مثال: 123456789
 INFO_CHANNEL = "@ettela_resani_member"
 
 app = Flask(__name__)
@@ -66,6 +66,7 @@ last_lucky_wheel = {int(k): v for k, v in db.get("last_lucky_wheel", {}).items()
 
 # --- وضعیت‌های موقت کاربران ---
 waiting_for_name = set()
+waiting_for_name_change = set() # وضعیت جدید برای تغییر نام
 waiting_for_channel = set()
 waiting_for_deletion = set()
 waiting_for_referral_code = set()
@@ -78,7 +79,7 @@ transfer_temp_dest = {}
 waiting_for_group_name = set()
 waiting_for_broadcast = set()
 
-# سیستم ضد اسپم کلیک روی بررسی عضویت (ذخیره زمان آخرین کلیک)
+# سیستم ضد اسپم کلیک روی بررسی عضویت
 last_click_time = {}
 
 # --- توابع کمکی ---
@@ -131,8 +132,8 @@ def check_user_membership(channel_username, user_id):
     return False
 
 def show_main_menu(chat_id):
-    for s in [waiting_for_name, waiting_for_channel, waiting_for_deletion, 
-              waiting_for_referral_code, is_entering_ref_code,
+    for s in [waiting_for_name, waiting_for_name_change, waiting_for_channel, 
+              waiting_for_deletion, waiting_for_referral_code, is_entering_ref_code,
               waiting_for_transfer_dest, waiting_for_transfer_amount,
               waiting_for_group_name, waiting_for_broadcast]:
         if chat_id in s: s.remove(chat_id)
@@ -153,7 +154,6 @@ def show_main_menu(chat_id):
         [{"text": "❓ راهنمای استفاده"}, {"text": "📞 پشتیبانی و ارتباط با ما"}]
     ]
     
-    # اگر کاربر ادمین بود، دکمه پنل مدیریت به منوی اصلی اضافه شود
     if chat_id == ADMIN_CHAT_ID:
         keyboard.insert(0, [{"text": "🛠 پنل مدیریت"}])
 
@@ -269,11 +269,25 @@ def bot_main():
                         show_main_menu(chat_id)
                     continue
 
+                # --- تغییر نام مستعار ---
+                if text == "✏️ تغییر نام مستعار":
+                    waiting_for_name_change.add(chat_id)
+                    send_message_with_reply_keyboard(chat_id, "✏️ لطفاً نام مستعار جدید خود را وارد کنید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                    continue
+
+                if chat_id in waiting_for_name_change:
+                    users_db[chat_id] = text
+                    save_data()
+                    waiting_for_name_change.remove(chat_id)
+                    send_message_with_reply_keyboard(chat_id, f"✅ نام مستعار شما با موفقیت به **{text}** تغییر یافت! 🎉")
+                    show_main_menu(chat_id)
+                    continue
+
                 # --- گردونه شانس روزانه ---
                 if text == "🎡 گردونه شانس":
                     now = time.time()
                     last_time = last_lucky_wheel.get(chat_id, 0)
-                    cooldown = 86400 # ۲۴ ساعت
+                    cooldown = 86400
 
                     if now - last_time < cooldown:
                         remaining_hours = int((cooldown - (now - last_time)) / 3600)
@@ -412,7 +426,6 @@ def bot_main():
                             send_message_with_reply_keyboard(chat_id, f"❌ شما هنوز عضو کانال {INFO_CHANNEL} نیستید! ابتدا عضو شوید و دوباره تلاش کنید.")
 
                 elif text == "💰 دریافت سکه":
-                    # --- 🛡️ سیستم ضد تقلب (جریمه ۳ سکه‌ای به ازای هر لفت) ---
                     user_joined_channels = history_db.get(chat_id, [])
                     left_channels = []
 
@@ -432,7 +445,6 @@ def bot_main():
                             chat_id, 
                             f"🚨 **اخطار سیستم ضد تقلب!**\n\nشما از {len(left_channels)} کانالی که برای عضویت در آن‌ها سکه گرفته بودید لفت داده‌اید!\nبه همین دلیل مبلغ **{penalty} سکه** از کیف پول شما جریمه کسر گردید. 💸"
                         )
-                    # ---------------------------------------------------------
 
                     available = [c for c in campaigns_db if c["owner"] != chat_id and c["remaining_views"] > 0 and c["channel"] not in history_db.get(chat_id, [])]
 
@@ -445,13 +457,11 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, msg, [[{"text": "✅ بررسی عضویت"}, {"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "✅ بررسی عضویت":
-                    # --- 🛡️ جلوگیری از کلیک سریع پشت سر هم (Rate Limiting - 3 ثانیه) ---
                     now = time.time()
                     if chat_id in last_click_time and now - last_click_time[chat_id] < 3:
                         send_message_with_reply_keyboard(chat_id, "⏳ لطفاً کمی صبر کنید، درخواست شما سریع‌تر از حد مجاز ارسال شده است!")
                         continue
                     last_click_time[chat_id] = now
-                    # ------------------------------------------------------------------
 
                     if chat_id in user_task:
                         target = user_task[chat_id]
@@ -507,12 +517,13 @@ def bot_main():
                     channels_str = "\n".join(my_c_list) if my_c_list else "ندارد"
                     
                     profile_text = (
-                        f"👤 پروفایل:\n\n"
-                        f"🔹 نام: {nickname}\n"
-                        f"🪙 سکه: {coins}\n\n"
+                        f"👤 پروفایل شما:\n\n"
+                        f"🔹 نام مستعار: {nickname}\n"
+                        f"🪙 موجودی سکه: {coins}\n\n"
                         f"📢 کانال‌های ثبت شده برای جذب ممبر:\n{channels_str}"
                     )
-                    send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                    # قرار دادن دکمه تغییر نام در زیر پروفایل
+                    send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "✏️ تغییر نام مستعار"}], [{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "❓ راهنمای استفاده":
                     help_text = (
@@ -521,7 +532,7 @@ def bot_main():
                         "⚠️ **سیستم ضد تقلب:** اگر از کانال‌ها لفت بدهید، به ازای هر کدام **۳ سکه** جریمه می‌شوید!\n\n"
                         "2️⃣ **گردونه شانس:** هر ۲۴ ساعت یک‌بار شانس خود را امتحان کنید و سکه هدیه بگیرید.\n\n"
                         "3️⃣ **ثبت تبلیغ (جذب ممبر):** کانال خود را با کمترین هزینه در معرض دید کاربران قرار دهید.\n\n"
-                        "4️⃣ **سفارش ساخت کانال/گروه:** با پرداخت ۱۰۰۰ سکه درخواست ساخت کانال/گروه اختصاصی ثبت کنید."
+                        "4️⃣ **تغییر نام:** از بخش «👤 پروفایل من» می‌توانید نام مستعار خود را تغییر دهید."
                     )
                     send_message_with_reply_keyboard(chat_id, help_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
