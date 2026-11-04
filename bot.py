@@ -10,7 +10,7 @@ import requests
 TOKEN = "*******"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-ADMIN_ID = "YOUR_ADMIN_CHAT_ID"  # شناسه عددی ادمین خودت را اینجا وارد کن یا بگذار همین بماند
+ADMIN_ID = "1708788049"  # شناسه عددی ادمین خودت را اینجا وارد کن یا بگذار همین بماند
 INFO_CHANNEL = "@ettela_resani_member"
 SUPPORT_ID = "@kia_karfarma"
 
