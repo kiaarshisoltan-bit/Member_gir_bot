@@ -11,10 +11,9 @@ from flask import Flask, request
 from datetime import datetime
 
 # --- تنظیمات اصلی ---
-# توکن از محیط Render خوانده می‌شود، اگر نبود از مقدار پیش‌فرض استفاده می‌کند
-ADMIN_ID = 1708788049  # ← اینجا chat_id خودت رو بذار
+ADMIN_ID = 1708788049  # ← chat_id خودت
 BOT_TOKEN = os.getenv("BOT_TOKEN", "546304737:fs7cQXqPES3D80hDcCxCfxHIwWfWr6ureuo")
-BASE_URL = f"https://api.bale.ai/bot{BOT_TOKEN}"
+BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"   # ← اصلاح شد
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 # نام فایل دیتابیس
