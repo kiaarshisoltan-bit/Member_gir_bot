@@ -3,6 +3,7 @@ import time
 import threading
 import requests
 import random
+import json
 from flask import Flask
 
 # --- تنظیمات اصلی ---
@@ -11,19 +12,59 @@ BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
 
 ADMIN_ID = "@kia_karfarma"
+# اگر آیدی عددی ادمین رو می‌دونی اینجا بذار یا از روی chat_id چک می‌کنیم
+ADMIN_CHAT_ID = None 
 INFO_CHANNEL = "@ettela_resani_member"
 
 app = Flask(__name__)
 
-# --- دیتابیس‌های در حافظه ---
-users_db = {}          
-wallets = {}           
-campaigns_db = []      # مربوط به تبلیغ و جذب ممبر کانال‌های بله
-history_db = {}        
-user_task = {}         
-rewarded_info_channel = set()
-created_groups_db = [] # مربوط به سفارش ساخت کانال/گروه
+# --- فایل‌های ذخیره‌سازی JSON ---
+DB_FILE = "bot_database.json"
 
+def load_data():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        "users_db": {},
+        "wallets": {},
+        "campaigns_db": [],
+        "history_db": {},
+        "rewarded_info_channel": [],
+        "created_groups_db": [],
+        "last_lucky_wheel": {}
+    }
+
+def save_data():
+    data = {
+        "users_db": users_db,
+        "wallets": wallets,
+        "campaigns_db": campaigns_db,
+        "history_db": history_db,
+        "rewarded_info_channel": list(rewarded_info_channel),
+        "created_groups_db": created_groups_db,
+        "last_lucky_wheel": last_lucky_wheel
+    }
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Error saving data: {e}")
+
+# بارگذاری اولیه اطلاعات
+db = load_data()
+users_db = {int(k): v for k, v in db.get("users_db", {}).items()}
+wallets = {int(k): v for k, v in db.get("wallets", {}).items()}
+campaigns_db = db.get("campaigns_db", [])
+history_db = {int(k): v for k, v in db.get("history_db", {}).items()}
+rewarded_info_channel = set(db.get("rewarded_info_channel", []))
+created_groups_db = db.get("created_groups_db", [])
+last_lucky_wheel = {int(k): v for k, v in db.get("last_lucky_wheel", {}).items()}
+
+# --- وضعیت‌های موقت کاربران ---
 waiting_for_name = set()
 waiting_for_channel = set()
 waiting_for_deletion = set()
@@ -35,6 +76,10 @@ waiting_for_transfer_amount = set()
 transfer_temp_dest = {}
 
 waiting_for_group_name = set()
+waiting_for_broadcast = set()
+
+# سیستم ضد اسپم کلیک روی بررسی عضویت (ذخیره زمان آخرین کلیک)
+last_click_time = {}
 
 # --- توابع کمکی ---
 
@@ -89,7 +134,7 @@ def show_main_menu(chat_id):
     for s in [waiting_for_name, waiting_for_channel, waiting_for_deletion, 
               waiting_for_referral_code, is_entering_ref_code,
               waiting_for_transfer_dest, waiting_for_transfer_amount,
-              waiting_for_group_name]:
+              waiting_for_group_name, waiting_for_broadcast]:
         if chat_id in s: s.remove(chat_id)
     if chat_id in user_task: del user_task[chat_id]
     if chat_id in transfer_temp_dest: del transfer_temp_dest[chat_id]
@@ -97,16 +142,22 @@ def show_main_menu(chat_id):
     nickname = users_db.get(chat_id, "کاربر")
     coins = wallets.get(chat_id, 0)
     text = f"سلام {nickname} عزیز! 🚀\n\n💰 موجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
+    
     keyboard = [
         [{"text": "📢 ثبت تبلیغ کانال (جذب ممبر)"}],
         [{"text": "✨ سفارش ساخت کانال/گروه جدید (۱۰۰۰ سکه)"}],
-        [{"text": "💰 دریافت سکه"}, {"text": "🎁 دریافت جایزه کانال"}],
+        [{"text": "💰 دریافت سکه"}, {"text": "🎡 گردونه شانس"}],
+        [{"text": "🎁 دریافت جایزه کانال"}, {"text": "👥 دعوت از دوستان"}],
         [{"text": "📋 لیست تبلیغ‌های من"}, {"text": "📂 لیست کانال/گروه‌های سفارشی"}],
-        [{"text": "👥 دعوت از دوستان"}, {"text": "💳 انتقال سکه"}],
-        [{"text": "👤 پروفایل من"}, {"text": "❓ راهنمای استفاده"}],
-        [{"text": "📞 پشتیبانی و ارتباط با ما"}]
+        [{"text": "💳 انتقال سکه"}, {"text": "👤 پروفایل من"}],
+        [{"text": "❓ راهنمای استفاده"}, {"text": "📞 پشتیبانی و ارتباط با ما"}]
     ]
+    
+    # اگر کاربر ادمین بود دکمه پنل ادمین اضافه شود (مثلاً بر اساس chat_id خاص یا متن)
+    # اینجا فرض میکنیم اولین کاربری که ربات رو استارت بزنه یا یک چت‌آیدی خاص ادمین باشه
     send_message_with_reply_keyboard(chat_id, text, keyboard)
+
+user_task = {}
 
 # --- بدنه اصلی ربات ---
 
@@ -130,6 +181,46 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "👋 خوش آمدید!\n\nآیا از طرف کسی دعوت شده‌اید و کد دعوت دارید؟", keyboard)
                     continue
 
+                # --- پنل ادمین ---
+                if text == "/admin":
+                    # بررسی دسترسی ادمین (می‌توانی chat_id خودت را اینجا قرار دهی)
+                    admin_count = len(users_db)
+                    total_coins = sum(wallets.values())
+                    admin_text = (
+                        "🛠 **پنل مدیریت ربات**\n\n"
+                        f"👥 تعداد کل کاربران: {admin_count}\n"
+                        f"🪙 مجموع سکه‌های در گردش: {total_coins}\n"
+                        f"📢 تعداد تبلیغ‌های فعال: {len(campaigns_db)}\n"
+                        f"📂 تعداد سفارش‌های گروه: {len(created_groups_db)}\n"
+                    )
+                    keyboard = [
+                        [{"text": "📢 ارسال پیام همگانی"}],
+                        [{"text": "🔙 بازگشت به منوی اصلی"}]
+                    ]
+                    send_message_with_reply_keyboard(chat_id, admin_text, keyboard)
+                    continue
+
+                if text == "📢 ارسال پیام همگانی":
+                    waiting_for_broadcast.add(chat_id)
+                    send_message_with_reply_keyboard(chat_id, "✍️ متنی که می‌خواهید به عنوان پیام همگانی به همه کاربران ارسال شود را بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                    continue
+
+                if chat_id in waiting_for_broadcast:
+                    broadcast_msg = text
+                    waiting_for_broadcast.remove(chat_id)
+                    
+                    success_count = 0
+                    for uid in users_db.keys():
+                        try:
+                            send_message_with_reply_keyboard(uid, f"📢 **پیام مدیریت:**\n\n{broadcast_msg}")
+                            success_count += 1
+                        except:
+                            pass
+                    
+                    send_message_with_reply_keyboard(chat_id, f"✅ پیام همگانی با موفقیت به {success_count} کاربر ارسال شد.")
+                    show_main_menu(chat_id)
+                    continue
+
                 if text == "🔙 بازگشت به منوی اصلی" or text == "🔙 بازگشت":
                     show_main_menu(chat_id)
                     continue
@@ -139,6 +230,7 @@ def bot_main():
                         waiting_for_referral_code.remove(chat_id)
                         users_db[chat_id] = "کاربر جدید"
                         wallets[chat_id] = 50
+                        save_data()
                         waiting_for_name.add(chat_id)
                         send_message_with_reply_keyboard(chat_id, "نام مستعار خود را بفرستید:", [[{"text": "🔙 بازگشت"} ]])
                     elif text == "✅ بله، کد دارم":
@@ -150,6 +242,7 @@ def bot_main():
                             wallets[ref_id] = wallets.get(ref_id, 0) + 10
                             users_db[chat_id] = "کاربر جدید"
                             wallets[chat_id] = 50
+                            save_data()
                             is_entering_ref_code.remove(chat_id)
                             waiting_for_referral_code.remove(chat_id)
                             waiting_for_name.add(chat_id)
@@ -164,7 +257,26 @@ def bot_main():
                         show_main_menu(chat_id)
                     else:
                         users_db[chat_id] = text
+                        save_data()
                         waiting_for_name.remove(chat_id)
+                        show_main_menu(chat_id)
+                    continue
+
+                # --- گردونه شانس روزانه ---
+                if text == "🎡 گردونه شانس":
+                    now = time.time()
+                    last_time = last_lucky_wheel.get(chat_id, 0)
+                    cooldown = 86400 # ۲۴ ساعت
+
+                    if now - last_time < cooldown:
+                        remaining_hours = int((cooldown - (now - last_time)) / 3600)
+                        send_message_with_reply_keyboard(chat_id, f"⏳ شما اخیراً از گردونه شانس استفاده کرده‌اید!\nلطفاً حدود {remaining_hours} ساعت دیگر دوباره امتحان کنید.")
+                    else:
+                        prize = random.choice([5, 10, 15, 20, 30, 50])
+                        wallets[chat_id] = wallets.get(chat_id, 0) + prize
+                        last_lucky_wheel[chat_id] = now
+                        save_data()
+                        send_message_with_reply_keyboard(chat_id, f"🎡 چرخش گردونه شانس انجام شد!\n\n🎉 تبریک! شما مبلغ **{prize} سکه** جایزه گرفتید! 🪙")
                         show_main_menu(chat_id)
                     continue
 
@@ -202,6 +314,7 @@ def bot_main():
                         else:
                             wallets[chat_id] -= amount
                             wallets[dest_id] = wallets.get(dest_id, 0) + amount
+                            save_data()
 
                             waiting_for_transfer_amount.remove(chat_id)
                             if chat_id in transfer_temp_dest: del transfer_temp_dest[chat_id]
@@ -228,6 +341,7 @@ def bot_main():
                     wallets[chat_id] = wallets.get(chat_id, 0) - 1000
                     owner_name = users_db.get(chat_id, "کاربر")
                     created_groups_db.append({"owner": owner_name, "owner_id": chat_id, "info": text})
+                    save_data()
                     waiting_for_group_name.remove(chat_id)
 
                     send_message_with_reply_keyboard(chat_id, "🎉 سفارش ساخت کانال/گروه شما ثبت شد و ۱۰۰۰ سکه کسر گردید!\nبه زودی ادمین با شما ارتباط می‌گیرد. 🚀")
@@ -270,6 +384,7 @@ def bot_main():
                     if text.startswith("@"):
                         wallets[chat_id] = wallets.get(chat_id, 0) - 50
                         campaigns_db.append({"owner": chat_id, "channel": text, "remaining_views": 25})
+                        save_data()
                         waiting_for_channel.remove(chat_id)
                         send_message_with_reply_keyboard(chat_id, f"✅ تبلیغ کانال {text} با موفقیت ثبت شد! 🎯", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
                         show_main_menu(chat_id)
@@ -283,6 +398,7 @@ def bot_main():
                         if check_user_membership(INFO_CHANNEL, chat_id):
                             wallets[chat_id] = wallets.get(chat_id, 0) + 10
                             rewarded_info_channel.add(chat_id)
+                            save_data()
                             send_message_with_reply_keyboard(chat_id, "🎉 تبریک! ۱۰ سکه بابت عضویت در کانال اطلاع‌رسانی دریافت کردید! 🪙")
                             show_main_menu(chat_id)
                         else:
@@ -303,6 +419,7 @@ def bot_main():
                         
                         for ch in left_channels:
                             history_db[chat_id].remove(ch)
+                        save_data()
 
                         send_message_with_reply_keyboard(
                             chat_id, 
@@ -321,6 +438,14 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, msg, [[{"text": "✅ بررسی عضویت"}, {"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "✅ بررسی عضویت":
+                    # --- 🛡️ جلوگیری از کلیک سریع پشت سر هم (Rate Limiting - 3 ثانیه) ---
+                    now = time.time()
+                    if chat_id in last_click_time and now - last_click_time[chat_id] < 3:
+                        send_message_with_reply_keyboard(chat_id, "⏳ لطفاً کمی صبر کنید، درخواست شما سریع‌تر از حد مجاز ارسال شده است!")
+                        continue
+                    last_click_time[chat_id] = now
+                    # ------------------------------------------------------------------
+
                     if chat_id in user_task:
                         target = user_task[chat_id]
                         if check_user_membership(target['channel'], chat_id):
@@ -332,6 +457,7 @@ def bot_main():
                             if target["remaining_views"] <= 0:
                                 if target in campaigns_db: campaigns_db.remove(target)
                             
+                            save_data()
                             del user_task[chat_id]
                             send_message_with_reply_keyboard(chat_id, "🎉 تایید شد! ۵ سکه دریافت کردید! 🪙")
                             show_main_menu(chat_id)
@@ -360,6 +486,7 @@ def bot_main():
                     found = next((c for c in campaigns_db if c["owner"] == chat_id and c["channel"] == text), None)
                     if found:
                         campaigns_db.remove(found)
+                        save_data()
                         waiting_for_deletion.remove(chat_id)
                         send_message_with_reply_keyboard(chat_id, f"🗑️ تبلیغ کانال {text} حذف شد.")
                         show_main_menu(chat_id)
@@ -385,9 +512,9 @@ def bot_main():
                         "❓ **راهنمای جامع استفاده از ربات**\n\n"
                         "1️⃣ **دریافت سکه:** با زدن روی «💰 دریافت سکه» و عضویت در کانال‌ها، ۵ سکه بگیرید.\n"
                         "⚠️ **سیستم ضد تقلب:** اگر از کانال‌ها لفت بدهید، به ازای هر کدام **۳ سکه** جریمه می‌شوید!\n\n"
-                        "2️⃣ **ثبت تبلیغ (جذب ممبر):** کانال خود را با کمترین هزینه در معرض دید کاربران قرار دهید.\n\n"
-                        "3️⃣ **سفارش ساخت کانال/گروه:** با پرداخت ۱۰۰۰ سکه درخواست ساخت کانال/گروه اختصاصی ثبت کنید.\n\n"
-                        "4️⃣ **دعوت و انتقال سکه:** از کد دعوت خود استفاده کنید یا به دوستانتان سکه بفرستید."
+                        "2️⃣ **گردونه شانس:** هر ۲۴ ساعت یک‌بار شانس خود را امتحان کنید و سکه هدیه بگیرید.\n\n"
+                        "3️⃣ **ثبت تبلیغ (جذب ممبر):** کانال خود را با کمترین هزینه در معرض دید کاربران قرار دهید.\n\n"
+                        "4️⃣ **سفارش ساخت کانال/گروه:** با پرداخت ۱۰۰۰ سکه درخواست ساخت کانال/گروه اختصاصی ثبت کنید."
                     )
                     send_message_with_reply_keyboard(chat_id, help_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
