@@ -18,11 +18,11 @@ app = Flask(__name__)
 # --- دیتابیس‌های در حافظه ---
 users_db = {}          
 wallets = {}           
-campaigns_db = []      
+campaigns_db = []      # مربوط به تبلیغ و جذب ممبر کانال‌های بله
 history_db = {}        
 user_task = {}         
 rewarded_info_channel = set()
-created_groups_db = []
+created_groups_db = [] # مربوط به سفارش ساخت کانال/گروه
 
 waiting_for_name = set()
 waiting_for_channel = set()
@@ -98,10 +98,10 @@ def show_main_menu(chat_id):
     coins = wallets.get(chat_id, 0)
     text = f"سلام {nickname} عزیز! 🚀\n\n💰 موجودی سکه شما: {coins} 🪙\n\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
     keyboard = [
-        [{"text": "📢 ثبت کانال جدید (جذب ممبر)"}],
-        [{"text": "✨ ساخت کانال / گروه (۱۰۰۰ سکه)"}],
+        [{"text": "📢 ثبت تبلیغ کانال (جذب ممبر)"}],
+        [{"text": "✨ سفارش ساخت کانال/گروه جدید (۱۰۰۰ سکه)"}],
         [{"text": "💰 دریافت سکه"}, {"text": "🎁 دریافت جایزه کانال"}],
-        [{"text": "📋 لیست کانال‌های من"}, {"text": "📂 لیست کانال‌ها/گروه‌ها"}],
+        [{"text": "📋 لیست تبلیغ‌های من"}, {"text": "📂 لیست کانال/گروه‌های سفارشی"}],
         [{"text": "👥 دعوت از دوستان"}, {"text": "💳 انتقال سکه"}],
         [{"text": "👤 پروفایل من"}, {"text": "❓ راهنمای استفاده"}],
         [{"text": "📞 پشتیبانی و ارتباط با ما"}]
@@ -216,12 +216,12 @@ def bot_main():
                         send_message_with_reply_keyboard(chat_id, "⚠️ لطفاً تعداد سکه را به صورت عدد وارد کنید:")
                     continue
 
-                if text == "✨ ساخت کانال / گروه (۱۰۰۰ سکه)":
+                if text == "✨ سفارش ساخت کانال/گروه جدید (۱۰۰۰ سکه)":
                     if wallets.get(chat_id, 0) < 1000:
-                        send_message_with_reply_keyboard(chat_id, f"⚠️ موجودی شما کافی نیست!\nبرای ساخت کانال/گروه به **۱۰۰۰ سکه** نیاز دارید اما موجودی شما `{wallets.get(chat_id, 0)}` سکه است.")
+                        send_message_with_reply_keyboard(chat_id, f"⚠️ موجودی شما کافی نیست!\nبرای سفارش ساخت کانال/گروه به **۱۰۰۰ سکه** نیاز دارید اما موجودی شما `{wallets.get(chat_id, 0)}` سکه است.")
                     else:
                         waiting_for_group_name.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "✨ **ساخت کانال یا گروه جدید**\n\nهزینه این خدمت **۱۰۰۰ سکه** از حساب شما کسر خواهد شد.\n\nلطفاً **نام و لینک (یا آیدی)** کانال یا گروهی که می‌خواهید ساخته شود را بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                        send_message_with_reply_keyboard(chat_id, "✨ **سفارش ساخت کانال یا گروه جدید**\n\nهزینه این خدمت **۱۰۰۰ سکه** از حساب شما کسر خواهد شد.\n\nلطفاً جزئیات و نام دلخواه کانال یا گروهی که می‌خواهید برایتان ساخته شود را بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
                     continue
 
                 if chat_id in waiting_for_group_name:
@@ -230,39 +230,39 @@ def bot_main():
                     created_groups_db.append({"owner": owner_name, "owner_id": chat_id, "info": text})
                     waiting_for_group_name.remove(chat_id)
 
-                    send_message_with_reply_keyboard(chat_id, "🎉 درخواست ساخت کانال/گروه شما با موفقیت ثبت شد و ۱۰۰۰ سکه کسر گردید!\nبه زودی کانال/گروه شما آماده و در لیست قرار می‌گیرد. 🚀")
+                    send_message_with_reply_keyboard(chat_id, "🎉 سفارش ساخت کانال/گروه شما ثبت شد و ۱۰۰۰ سکه کسر گردید!\nبه زودی ادمین با شما ارتباط می‌گیرد. 🚀")
                     
                     try:
-                        send_message_with_reply_keyboard(ADMIN_ID.replace("@",""), f"🔔 درخواست ساخت کانال/گروه جدید!\nاز طرف: {owner_name} (`{chat_id}`)\nجزئیات: {text}")
+                        send_message_with_reply_keyboard(ADMIN_ID.replace("@",""), f"🔔 سفارش ساخت کانال/گروه جدید!\nاز طرف: {owner_name} (`{chat_id}`)\nجزئیات: {text}")
                     except:
                         pass
 
                     show_main_menu(chat_id)
                     continue
 
-                if text == "📂 لیست کانال‌ها/گروه‌ها":
+                if text == "📂 لیست کانال/گروه‌های سفارشی":
                     if not created_groups_db:
-                        send_message_with_reply_keyboard(chat_id, "📭 هنوز کانال یا گروهی توسط کاربران ساخته نشده است.")
+                        send_message_with_reply_keyboard(chat_id, "📭 هنوز سفارش ساخت کانال یا گروهی ثبت نشده است.")
                     else:
-                        msg = "📂 **لیست کانال‌ها و گروه‌های کاربران:**\n\n"
+                        msg = "📂 **لیست کانال‌ها و گروه‌های سفارشی کاربران:**\n\n"
                         for idx, g in enumerate(created_groups_db, 1):
-                            msg += f"{idx}. 📌 {g['info']}\n   👤 سازنده: {g['owner']}\n\n"
+                            msg += f"{idx}. 📌 {g['info']}\n   👤 سفارش‌دهنده: {g['owner']}\n\n"
                         send_message_with_reply_keyboard(chat_id, msg, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
                     continue
 
-                if text == "📢 ثبت کانال جدید (جذب ممبر)":
+                if text == "📢 ثبت تبلیغ کانال (جذب ممبر)":
                     if wallets.get(chat_id, 0) < 50:
                         send_message_with_reply_keyboard(chat_id, "⚠️ موجودی شما کمتر از ۵۰ سکه است!")
                     else:
                         waiting_for_channel.add(chat_id)
                         guide = (
                             "📖 *راهنمای ادمین کردن ربات*\n\n"
-                            "برای اینکه ربات بتواند عضویت کاربران را بررسی کند، حتماً باید در کانال خود ادمین شوید.\n\n"
+                            "برای اینکه ربات بتواند عضویت کاربران را در کانال شما بررسی کند، حتماً باید ربات را در کانال خود ادمین کنید.\n\n"
                             "✅ مراحل:\n"
                             "۱. وارد کانال خود شوید.\n"
                             "۲. به قسمت ادمین‌ها بروید.\n"
-                            "۳. ربات را اضافه کرده و دسترسی 'مشاهده پیام‌ها' را به آن بدهید.\n\n"
-                            "حالا آیدی کانال را با @ بفرستید:"
+                            "۳. ربات را اضافه کرده و دسترسی لازم را به آن بدهید.\n\n"
+                            "حالا آیدی کانال خود را با @ بفرستید:"
                         )
                         send_message_with_reply_keyboard(chat_id, guide, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
@@ -271,10 +271,10 @@ def bot_main():
                         wallets[chat_id] = wallets.get(chat_id, 0) - 50
                         campaigns_db.append({"owner": chat_id, "channel": text, "remaining_views": 25})
                         waiting_for_channel.remove(chat_id)
-                        send_message_with_reply_keyboard(chat_id, f"✅ کانال {text} ثبت شد! 🎯", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                        send_message_with_reply_keyboard(chat_id, f"✅ تبلیغ کانال {text} با موفقیت ثبت شد! 🎯", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
                         show_main_menu(chat_id)
                     else:
-                        send_message_with_reply_keyboard(chat_id, "⚠️ آیدی باید با @ شروع شود:")
+                        send_message_with_reply_keyboard(chat_id, "⚠️ آیدی کانال حتماً باید با @ شروع شود:")
 
                 elif text == "🎁 دریافت جایزه کانال":
                     if chat_id in rewarded_info_channel:
@@ -289,7 +289,7 @@ def bot_main():
                             send_message_with_reply_keyboard(chat_id, f"❌ شما هنوز عضو کانال {INFO_CHANNEL} نیستید! ابتدا عضو شوید و دوباره تلاش کنید.")
 
                 elif text == "💰 دریافت سکه":
-                    # --- 🛡️ سیستم ضد تقلب (جریمه ۳ سکه‌ای به ازای هر خروج) ---
+                    # --- 🛡️ سیستم ضد تقلب (جریمه ۳ سکه‌ای به ازای هر لفت) ---
                     user_joined_channels = history_db.get(chat_id, [])
                     left_channels = []
 
@@ -306,7 +306,7 @@ def bot_main():
 
                         send_message_with_reply_keyboard(
                             chat_id, 
-                            f"🚨 **اخطار سیستم ضد تقلب!**\n\nشما از {len(left_channels)} کانالی که برای عضویت در آن‌ها سکه گرفته بودید لفت داده‌اید!\nبه همین دلیل مبلغ **{penalty} سکه** (هر کانال ۳ سکه) از کیف پول شما جریمه و کسر گردید. 💸"
+                            f"🚨 **اخطار سیستم ضد تقلب!**\n\nشما از {len(left_channels)} کانالی که برای عضویت در آن‌ها سکه گرفته بودید لفت داده‌اید!\nبه همین دلیل مبلغ **{penalty} سکه** از کیف پول شما جریمه کسر گردید. 💸"
                         )
                     # ---------------------------------------------------------
 
@@ -340,31 +340,31 @@ def bot_main():
                     else:
                         show_main_menu(chat_id)
 
-                elif text == "📋 لیست کانال‌های من":
+                elif text == "📋 لیست تبلیغ‌های من":
                     my_c = [c for c in campaigns_db if c["owner"] == chat_id]
                     if not my_c:
-                        send_message_with_reply_keyboard(chat_id, "📭 کانالی ندارید.")
+                        send_message_with_reply_keyboard(chat_id, "📭 شما تبلیغ فعالی ندارید.")
                     else:
-                        msg = "📋 **کانال‌های شما:**\n\n" + "\n".join([f"- {c['channel']} ({c['remaining_views']} باقی‌مانده)" for c in my_c])
-                        send_message_with_reply_keyboard(chat_id, msg, [[{"text": "🗑️ حذف کانال"}, {"text": "🔙 بازگشت به منوی اصلی"}]])
+                        msg = "📋 **تبلیغ‌های کانال شما:**\n\n" + "\n".join([f"- {c['channel']} ({c['remaining_views']} بازدید باقی‌مانده)" for c in my_c])
+                        send_message_with_reply_keyboard(chat_id, msg, [[{"text": "🗑️ حذف تبلیغ کانال"}, {"text": "🔙 بازگشت به منوی اصلی"}]])
 
-                elif text == "🗑️ حذف کانال":
+                elif text == "🗑️ حذف تبلیغ کانال":
                     my_c = [c for c in campaigns_db if c["owner"] == chat_id]
                     if not my_c:
-                        send_message_with_reply_keyboard(chat_id, "📭 کانالی نیست.")
+                        send_message_with_reply_keyboard(chat_id, "📭 کانالی برای حذف وجود ندارد.")
                     else:
                         waiting_for_deletion.add(chat_id)
-                        send_message_with_reply_keyboard(chat_id, "👇 آیدی کانال را برای حذف بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
+                        send_message_with_reply_keyboard(chat_id, "👇 آیدی کانالی که می‌خواهید حذف شود را بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif chat_id in waiting_for_deletion:
                     found = next((c for c in campaigns_db if c["owner"] == chat_id and c["channel"] == text), None)
                     if found:
                         campaigns_db.remove(found)
                         waiting_for_deletion.remove(chat_id)
-                        send_message_with_reply_keyboard(chat_id, f"🗑️ کانال {text} حذف شد.")
+                        send_message_with_reply_keyboard(chat_id, f"🗑️ تبلیغ کانال {text} حذف شد.")
                         show_main_menu(chat_id)
                     else:
-                        send_message_with_reply_keyboard(chat_id, "⚠️ یافت نشد!")
+                        send_message_with_reply_keyboard(chat_id, "⚠️ کانالی با این آیدی در لیست شما یافت نشد!")
 
                 elif text == "👤 پروفایل من":
                     nickname = users_db.get(chat_id, "کاربر")
@@ -376,20 +376,18 @@ def bot_main():
                         f"👤 پروفایل:\n\n"
                         f"🔹 نام: {nickname}\n"
                         f"🪙 سکه: {coins}\n\n"
-                        f"📢 کانال‌های ثبت شده من:\n{channels_str}"
+                        f"📢 کانال‌های ثبت شده برای جذب ممبر:\n{channels_str}"
                     )
                     send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "❓ راهنمای استفاده":
                     help_text = (
                         "❓ **راهنمای جامع استفاده از ربات**\n\n"
-                        "1️⃣ **چطور سکه به دست بیاوریم؟**\n"
-                        "با زدن روی دکمه «💰 دریافت سکه»، در کانال‌های پیشنهادی عضو شوید و بررسی را بزنید تا ۵ سکه بگیرید.\n"
+                        "1️⃣ **دریافت سکه:** با زدن روی «💰 دریافت سکه» و عضویت در کانال‌ها، ۵ سکه بگیرید.\n"
                         "⚠️ **سیستم ضد تقلب:** اگر از کانال‌ها لفت بدهید، به ازای هر کدام **۳ سکه** جریمه می‌شوید!\n\n"
-                        "2️⃣ **ساخت کانال/گروه درون‌رباتی:**\n"
-                        "با داشتن ۱۰۰۰ سکه می‌توانید از بخش «✨ ساخت کانال / گروه» درخواست ساخت کانال یا گروه خود را ثبت کنید.\n\n"
-                        "3️⃣ **سیستم دعوت و انتقال سکه:**\n"
-                        "کد دعوت خود را بفرستید تا ۱۰ سکه بگیرید یا از «💳 انتقال سکه» به دوستانتان سکه بفرستید."
+                        "2️⃣ **ثبت تبلیغ (جذب ممبر):** کانال خود را با کمترین هزینه در معرض دید کاربران قرار دهید.\n\n"
+                        "3️⃣ **سفارش ساخت کانال/گروه:** با پرداخت ۱۰۰۰ سکه درخواست ساخت کانال/گروه اختصاصی ثبت کنید.\n\n"
+                        "4️⃣ **دعوت و انتقال سکه:** از کد دعوت خود استفاده کنید یا به دوستانتان سکه بفرستید."
                     )
                     send_message_with_reply_keyboard(chat_id, help_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
@@ -398,7 +396,7 @@ def bot_main():
                         "📞 **ارتباط با پشتیبانی و اطلاع‌رسانی**\n\n"
                         f"👨‍💻 **پشتیبان اصلی:** {ADMIN_ID}\n"
                         f"📢 **کانال اطلاع‌رسانی ربات:** {INFO_CHANNEL}\n\n"
-                        "هرگونه سوال، پیشنهاد یا مشکلی دارید می‌توانید به ادمین پیام دهید."
+                        "هرگونه سوال یا مشکلی دارید می‌توانید به ادمین پیام دهید."
                     )
                     send_message_with_reply_keyboard(chat_id, support_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
