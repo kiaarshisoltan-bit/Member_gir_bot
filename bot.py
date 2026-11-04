@@ -9,6 +9,9 @@ import threading
 import requests
 from flask import Flask, request
 from datetime import datetime
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+
 
 # --- تنظیمات اصلی ---
 ADMIN_ID = 1708788049  # ← chat_id خودت
