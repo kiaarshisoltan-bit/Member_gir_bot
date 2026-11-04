@@ -66,7 +66,7 @@ last_lucky_wheel = {int(k): v for k, v in db.get("last_lucky_wheel", {}).items()
 
 # --- وضعیت‌های موقت کاربران ---
 waiting_for_name = set()
-waiting_for_name_change = set() # وضعیت جدید برای تغییر نام
+waiting_for_name_change = set()
 waiting_for_channel = set()
 waiting_for_deletion = set()
 waiting_for_referral_code = set()
@@ -131,6 +131,13 @@ def check_user_membership(channel_username, user_id):
         pass
     return False
 
+def is_nickname_taken(name, current_chat_id):
+    """بررسی می‌کند که آیا نام مستعار قبلاً توسط کاربر دیگری انتخاب شده است یا خیر"""
+    for uid, uname in users_db.items():
+        if uid != current_chat_id and uname == name:
+            return True
+    return False
+
 def show_main_menu(chat_id):
     for s in [waiting_for_name, waiting_for_name_change, waiting_for_channel, 
               waiting_for_deletion, waiting_for_referral_code, is_entering_ref_code,
@@ -151,7 +158,8 @@ def show_main_menu(chat_id):
         [{"text": "🎁 دریافت جایزه کانال"}, {"text": "👥 دعوت از دوستان"}],
         [{"text": "📋 لیست تبلیغ‌های من"}, {"text": "📂 لیست کانال/گروه‌های سفارشی"}],
         [{"text": "💳 انتقال سکه"}, {"text": "👤 پروفایل من"}],
-        [{"text": "❓ راهنمای استفاده"}, {"text": "📞 پشتیبانی و ارتباط با ما"}]
+        [{"text": "✏️ تغییر نام مستعار"}, {"text": "❓ راهنمای استفاده"}],
+        [{"text": "📞 پشتیبانی و ارتباط با ما"}]
     ]
     
     if chat_id == ADMIN_CHAT_ID:
@@ -235,9 +243,6 @@ def bot_main():
                 if chat_id in waiting_for_referral_code:
                     if text == "❌ خیر، ندارم":
                         waiting_for_referral_code.remove(chat_id)
-                        users_db[chat_id] = "کاربر جدید"
-                        wallets[chat_id] = 50
-                        save_data()
                         waiting_for_name.add(chat_id)
                         send_message_with_reply_keyboard(chat_id, "نام مستعار خود را بفرستید:", [[{"text": "🔙 بازگشت"} ]])
                     elif text == "✅ بله، کد دارم":
@@ -247,9 +252,6 @@ def bot_main():
                         ref_id = int(text)
                         if ref_id in wallets and ref_id != chat_id:
                             wallets[ref_id] = wallets.get(ref_id, 0) + 10
-                            users_db[chat_id] = "کاربر جدید"
-                            wallets[chat_id] = 50
-                            save_data()
                             is_entering_ref_code.remove(chat_id)
                             waiting_for_referral_code.remove(chat_id)
                             waiting_for_name.add(chat_id)
@@ -263,10 +265,15 @@ def bot_main():
                         waiting_for_name.remove(chat_id)
                         show_main_menu(chat_id)
                     else:
-                        users_db[chat_id] = text
-                        save_data()
-                        waiting_for_name.remove(chat_id)
-                        show_main_menu(chat_id)
+                        if is_nickname_taken(text, chat_id):
+                            send_message_with_reply_keyboard(chat_id, "⚠️ این نام مستعار قبلاً توسط کاربر دیگری انتخاب شده است!\nلطفاً نام دیگری وارد کنید:")
+                        else:
+                            users_db[chat_id] = text
+                            wallets[chat_id] = 50  # هدیه ثبت نام اولیه
+                            save_data()
+                            waiting_for_name.remove(chat_id)
+                            send_message_with_reply_keyboard(chat_id, f"✅ نام مستعار شما با موفقیت ثبت شد و ۵۰ سکه هدیه ورود دریافت کردید! 🎉")
+                            show_main_menu(chat_id)
                     continue
 
                 # --- تغییر نام مستعار ---
@@ -276,11 +283,14 @@ def bot_main():
                     continue
 
                 if chat_id in waiting_for_name_change:
-                    users_db[chat_id] = text
-                    save_data()
-                    waiting_for_name_change.remove(chat_id)
-                    send_message_with_reply_keyboard(chat_id, f"✅ نام مستعار شما با موفقیت به **{text}** تغییر یافت! 🎉")
-                    show_main_menu(chat_id)
+                    if is_nickname_taken(text, chat_id):
+                        send_message_with_reply_keyboard(chat_id, "⚠️ این نام مستعار قبلاً توسط کاربر دیگری انتخاب شده است!\nلطفاً نام دیگری وارد کنید:")
+                    else:
+                        users_db[chat_id] = text
+                        save_data()
+                        waiting_for_name_change.remove(chat_id)
+                        send_message_with_reply_keyboard(chat_id, f"✅ نام مستعار شما با موفقیت به **{text}** تغییر یافت! 🎉")
+                        show_main_menu(chat_id)
                     continue
 
                 # --- گردونه شانس روزانه ---
@@ -522,7 +532,6 @@ def bot_main():
                         f"🪙 موجودی سکه: {coins}\n\n"
                         f"📢 کانال‌های ثبت شده برای جذب ممبر:\n{channels_str}"
                     )
-                    # قرار دادن دکمه تغییر نام در زیر پروفایل
                     send_message_with_reply_keyboard(chat_id, profile_text, [[{"text": "✏️ تغییر نام مستعار"}], [{"text": "🔙 بازگشت به منوی اصلی"}]])
 
                 elif text == "❓ راهنمای استفاده":
@@ -532,7 +541,7 @@ def bot_main():
                         "⚠️ **سیستم ضد تقلب:** اگر از کانال‌ها لفت بدهید، به ازای هر کدام **۳ سکه** جریمه می‌شوید!\n\n"
                         "2️⃣ **گردونه شانس:** هر ۲۴ ساعت یک‌بار شانس خود را امتحان کنید و سکه هدیه بگیرید.\n\n"
                         "3️⃣ **ثبت تبلیغ (جذب ممبر):** کانال خود را با کمترین هزینه در معرض دید کاربران قرار دهید.\n\n"
-                        "4️⃣ **تغییر نام:** از بخش «👤 پروفایل من» می‌توانید نام مستعار خود را تغییر دهید."
+                        "4️⃣ **تغییر نام:** نام‌های مستعار یکتا و غیرتکراری هستند."
                     )
                     send_message_with_reply_keyboard(chat_id, help_text, [[{"text": "🔙 بازگشت به منوی اصلی"}]])
 
