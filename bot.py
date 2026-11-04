@@ -12,8 +12,8 @@ BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://member-gir-bot.onrender.com")
 
 ADMIN_ID = "@kia_karfarma"
-# اگر آیدی عددی ادمین رو می‌دونی اینجا بذار یا از روی chat_id چک می‌کنیم
-ADMIN_CHAT_ID = None 
+# ⚠️ مهم: آیدی عددی (chat_id) تلگرام/بله خودت را اینجا وارد کن تا دکمه پنل ادمین برایت نمایش داده شود
+ADMIN_CHAT_ID =  1708788049 # مثال: 123456789
 INFO_CHANNEL = "@ettela_resani_member"
 
 app = Flask(__name__)
@@ -153,8 +153,10 @@ def show_main_menu(chat_id):
         [{"text": "❓ راهنمای استفاده"}, {"text": "📞 پشتیبانی و ارتباط با ما"}]
     ]
     
-    # اگر کاربر ادمین بود دکمه پنل ادمین اضافه شود (مثلاً بر اساس chat_id خاص یا متن)
-    # اینجا فرض میکنیم اولین کاربری که ربات رو استارت بزنه یا یک چت‌آیدی خاص ادمین باشه
+    # اگر کاربر ادمین بود، دکمه پنل مدیریت به منوی اصلی اضافه شود
+    if chat_id == ADMIN_CHAT_ID:
+        keyboard.insert(0, [{"text": "🛠 پنل مدیریت"}])
+
     send_message_with_reply_keyboard(chat_id, text, keyboard)
 
 user_task = {}
@@ -182,8 +184,11 @@ def bot_main():
                     continue
 
                 # --- پنل ادمین ---
-                if text == "/admin":
-                    # بررسی دسترسی ادمین (می‌توانی chat_id خودت را اینجا قرار دهی)
+                if text == "/admin" or text == "🛠 پنل مدیریت":
+                    if chat_id != ADMIN_CHAT_ID:
+                        send_message_with_reply_keyboard(chat_id, "⚠️ شما دسترسی به پنل مدیریت ندارید!")
+                        continue
+
                     admin_count = len(users_db)
                     total_coins = sum(wallets.values())
                     admin_text = (
@@ -201,6 +206,8 @@ def bot_main():
                     continue
 
                 if text == "📢 ارسال پیام همگانی":
+                    if chat_id != ADMIN_CHAT_ID:
+                        continue
                     waiting_for_broadcast.add(chat_id)
                     send_message_with_reply_keyboard(chat_id, "✍️ متنی که می‌خواهید به عنوان پیام همگانی به همه کاربران ارسال شود را بفرستید:", [[{"text": "🔙 بازگشت به منوی اصلی"}]])
                     continue
