@@ -15,8 +15,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "*******")
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "1708788049"))
 INFO_CHANNEL = "@ettela_resani_member"
-SUPPORT_CHANNEL = "@ettela_resani_member" # کانال پشتیبانی و اطلاع‌رسانی
-ADMIN_USERNAME = "@kia_karfarma" # آیدی متنی پشتیبانی
+SUPPORT_CHANNEL = "@ettela_resani_member"
+ADMIN_USERNAME = "@kia_karfarma"
 
 print(f"🚀 ربات ممبرگیر جامع بله شروع به کار کرد...", flush=True)
 
@@ -131,14 +131,12 @@ def get_main_keyboard(chat_id):
 def get_back_keyboard():
     return {"keyboard": [[BTN_MAIN_MENU]], "resize_keyboard": True}
 
-# بررسی یکتا بودن نام مستعار
 def is_nickname_taken(name, current_chat_id):
     for cid, u_data in db["users_db"].items():
         if cid != str(current_chat_id) and u_data.get("name") == name:
             return True
     return False
 
-# بررسی عضویت کانال
 def check_channel_membership(chat_id, channel):
     res = api("getChatMember", {"chat_id": channel, "user_id": chat_id})
     if res.get("ok"):
@@ -147,7 +145,6 @@ def check_channel_membership(chat_id, channel):
             return True
     return False
 
-# پاکسازی حالت‌های انتظار کاربر
 def clear_user_states(str_cid):
     for key in ["waiting_for_name", "waiting_for_channel", "waiting_for_order_link", "waiting_for_broadcast", "waiting_for_new_gift_code", "waiting_for_redeem_code"]:
         if str_cid in db.get(key, []):
@@ -157,7 +154,6 @@ def clear_user_states(str_cid):
             del db[key][str_cid]
     save_db(db)
 
-# مدیریت آپدیت‌ها و پیام‌ها
 def handle_update(update):
     message = update.get("message")
     if not message:
@@ -169,18 +165,15 @@ def handle_update(update):
     
     print(f"📩 پیام جدید از {chat_id}: {text}", flush=True)
 
-    # مقداردهی اولیه کیف پول
     if str_cid not in db["wallets"]:
         db["wallets"][str_cid] = 50
         save_db(db)
 
-    # دکمه بازگشت به منوی اصلی
     if text == BTN_MAIN_MENU:
         clear_user_states(str_cid)
         send_message(chat_id, "🏠 به منوی اصلی بازگشتید.", get_main_keyboard(chat_id))
         return
 
-    # دستور /start و ثبت‌نام نام مستعار
     if text.startswith("/start") or str_cid in db.get("waiting_for_name", []):
         if text.startswith("/start"):
             parts = text.split()
@@ -209,7 +202,6 @@ def handle_update(update):
         send_message(chat_id, "سلام! به منوی اصلی ربات ممبرگیر خوش آمدید.", get_main_keyboard(chat_id))
         return
 
-    # پردازش مراحل انتظار (States) پیش از بررسی کلیدواژه‌ها
     if str_cid in db.get("waiting_for_order_link", []):
         db["waiting_for_order_link"].remove(str_cid)
         db.setdefault("waiting_for_order_count", {})[str_cid] = text
@@ -225,7 +217,7 @@ def handle_update(update):
             return
         
         channel_link = db["waiting_for_order_count"][str_cid]
-        total_cost = count * 2 # هر ممبر ۲ سکه
+        total_cost = count * 2
         current_coins = db["wallets"].get(str_cid, 0)
 
         if total_cost > current_coins:
@@ -235,7 +227,12 @@ def handle_update(update):
             return
 
         db["wallets"][str_cid] -= total_cost
-        db.setdefault("campaigns_db", {})[str_cid] = {"channel": channel_link, "count": count, "remaining": count}
+        db.setdefault("campaigns_db", {})[str_cid] = {
+            "channel": channel_link, 
+            "count": count, 
+            "remaining": count,
+            "owner": str_cid
+        }
         del db["waiting_for_order_count"][str_cid]
         save_db(db)
         send_message(chat_id, f"✅ سفارش شما با موفقیت ثبت شد!\nکانال: {channel_link}\nتعداد: {count} ممبر\nهزینه کسر شده: {total_cost} سکه.", get_main_keyboard(chat_id))
@@ -328,7 +325,6 @@ def handle_update(update):
         send_message(chat_id, f"✅ به {count} کاربر ارسال شد.", get_main_keyboard(chat_id))
         return
 
-    # منوی اصلی و کلیدواژه‌ها
     if text == BTN_MY_ACCOUNT:
         u_name = db["users_db"].get(str_cid, {}).get("name", "ثبت نشده")
         coins = db["wallets"].get(str_cid, 0)
@@ -341,20 +337,35 @@ def handle_update(update):
         send_message(chat_id, msg, get_main_keyboard(chat_id))
         return
 
+    # بخش دریافت سکه کاملاً پویا و متصل به سفارشات کاربران
     if text == BTN_EARN_COINS:
-        sample_channel = "@sample_earn_channel"
-        user_rewarded_list = db.setdefault("rewarded_earn_channels", {}).setdefault(sample_channel, [])
-        
-        if str_cid in user_rewarded_list:
-            send_message(chat_id, f"🎁 شما قبلاً جایزه این کانال را دریافت کرده‌اید!\nبه زودی کانال‌های جدیدی اضافه خواهد شد.", get_main_keyboard(chat_id))
+        campaigns = db.get("campaigns_db", {})
+        # فیلتر کردن کمپین‌هایی که خود کاربر صاحبش نیست و هنوز ممبر می‌خواهند
+        valid_campaigns = []
+        for owner_id, camp in campaigns.items():
+            if owner_id != str_cid and camp.get("remaining", 0) > 0:
+                # بررسی اینکه کاربر قبلاً این کانال را پاداش نگرفته باشد
+                rewarded_users = camp.setdefault("rewarded_users", [])
+                if str_cid not in rewarded_users:
+                    valid_campaigns.append((owner_id, camp))
+
+        if not valid_campaigns:
+            send_message(chat_id, "🎁 در حال حاضر کانال فعالی برای دریافت سکه وجود ندارد!\nلطفاً بعداً دوباره امتحان کنید یا خودتان سفارش ممبر ثبت کنید.", get_main_keyboard(chat_id))
+            return
+
+        # انتخاب تصادفی یک کانال از بین سفارشات کاربران
+        owner_id, camp = random.choice(valid_campaigns)
+        target_channel = camp["channel"]
+
+        # بررسی عضویت کاربر در کانال انتخاب‌شده
+        if check_channel_membership(chat_id, target_channel):
+            camp["rewarded_users"].append(str_cid)
+            camp["remaining"] -= 1
+            db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + 5
+            save_db(db)
+            send_message(chat_id, f"🎉 تبریک! عضویت شما در کانال {target_channel} تأیید شد و ۵ سکه به حساب شما واریز گردید.", get_main_keyboard(chat_id))
         else:
-            if check_channel_membership(chat_id, sample_channel):
-                user_rewarded_list.append(str_cid)
-                db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + 5
-                save_db(db)
-                send_message(chat_id, "🎉 تبریک! عضویت شما تأیید شد و ۵ سکه به حساب شما واریز گردید.", get_main_keyboard(chat_id))
-            else:
-                send_message(chat_id, f"💰 بخش دریافت سکه رایگان:\n\nلطفاً در کانال زیر عضو شوید و سپس دوباره روی این دکمه بزنید تا **۵ سکه** پاداش بگیرید:\n🔗 {sample_channel}", get_main_keyboard(chat_id))
+            send_message(chat_id, f"💰 بخش دریافت سکه رایگان:\n\nلطفاً در کانال زیر عضو شوید و سپس دوباره روی این دکمه بزنید تا **۵ سکه** پاداش بگیرید:\n🔗 {target_channel}", get_main_keyboard(chat_id))
         return
 
     if text == BTN_INFO_BONUS:
@@ -414,7 +425,7 @@ def handle_update(update):
     if text == BTN_GUIDE:
         guide_text = (
             "❓ راهنمای کامل استفاده از ربات ممبرگیر:\n\n"
-            "1️⃣ **دریافت سکه (💰):** با عضویت در کانال‌های پیشنهادی، به ازای هر کانال ۵ سکه رایگان دریافت کنید.\n"
+            "1️⃣ **دریافت سکه (💰):** با عضویت در کانال‌های ثبت‌شده توسط کاربران، به ازای هر کانال ۵ سکه رایگان دریافت کنید.\n"
             "2️⃣ **دعوت از دوستان (👥):** لینک یا آیدی خود را به دوستانتان بدهید؛ با ورود هر نفر، ۲۰ سکه هدیه بگیرید.\n"
             "3️⃣ **سفارش جذب ممبر (📢):** کانال خود را ثبت کنید و به ازای هر ممبر تنها ۲ سکه بپردازید.\n"
             "4️⃣ **گردونه شانس (🎡):** هر ۲۴ ساعت یک‌بار شانس خود را برای برنده شدن سکه‌های بیشتر امتحان کنید.\n"
@@ -448,7 +459,6 @@ def handle_update(update):
 
     send_message(chat_id, "دستور نامعتبر است. از دکمه‌های زیر استفاده کنید:", get_main_keyboard(chat_id))
 
-# تابع پینگ خودکار برای جلوگیری از خوابیدن ربات روی Render
 def keep_alive():
     while True:
         try:
