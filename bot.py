@@ -16,7 +16,7 @@ BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "1708788049"))
 INFO_CHANNEL = "@ettela_resani_member"
 
-print(f"🚀 ربات ممبرگیر جامع و کامل شروع به کار کرد...", flush=True)
+print(f"🚀 ربات ممبرگیر جامع بله شروع به کار کرد...", flush=True)
 
 # وب‌سرور Flask برای زنده ماندن روی Render
 app = Flask(__name__)
@@ -27,7 +27,7 @@ def home():
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0",port=port, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 threading.Thread(target=run_flask, daemon=True).start()
 
@@ -49,7 +49,6 @@ def load_db():
         "rewarded_info_channel": [],
         "waiting_for_name": [],
         "waiting_for_channel": [],
-        "waiting_for_referral_code": [],
         "waiting_for_transfer_dest": {},
         "waiting_for_transfer_amount": {},
         "waiting_for_order_link": [],
@@ -145,6 +144,16 @@ def check_channel_membership(chat_id, channel):
             return True
     return False
 
+# پاکسازی حالت‌های انتظار کاربر
+def clear_user_states(str_cid):
+    for key in ["waiting_for_name", "waiting_for_channel", "waiting_for_order_link", "waiting_for_broadcast", "waiting_for_new_gift_code", "waiting_for_redeem_code"]:
+        if str_cid in db.get(key, []):
+            db[key].remove(str_cid)
+    for key in ["waiting_for_transfer_dest", "waiting_for_transfer_amount", "waiting_for_order_count"]:
+        if str_cid in db.get(key, {}):
+            del db[key][str_cid]
+    save_db(db)
+
 # مدیریت آپدیت‌ها و پیام‌ها
 def handle_update(update):
     message = update.get("message")
@@ -164,18 +173,11 @@ def handle_update(update):
 
     # دکمه بازگشت به منوی اصلی
     if text == BTN_MAIN_MENU:
-        for key in ["waiting_for_name", "waiting_for_channel", "waiting_for_referral_code", "waiting_for_order_link", "waiting_for_broadcast", "waiting_for_new_gift_code", "waiting_for_redeem_code"]:
-            if str_cid in db.get(key, []):
-                db[key].remove(str_cid)
-        for key in ["waiting_for_transfer_dest", "waiting_for_transfer_amount", "waiting_for_order_count"]:
-            if str_cid in db.get(key, {}):
-                del db[key][str_cid]
-        save_db(db)
-        
+        clear_user_states(str_cid)
         send_message(chat_id, "🏠 به منوی اصلی بازگشتید.", get_main_keyboard(chat_id))
         return
 
-    # دستور /start و ثبت‌نام
+    # دستور /start و ثبت‌نام نام مستعار
     if text.startswith("/start") or str_cid in db.get("waiting_for_name", []):
         if text.startswith("/start"):
             parts = text.split()
@@ -204,56 +206,8 @@ def handle_update(update):
         send_message(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید.", get_main_keyboard(chat_id))
         return
 
-    # حساب کاربری
-    if text == BTN_MY_ACCOUNT:
-        u_name = db["users_db"].get(str_cid, {}).get("name", "ثبت نشده")
-        coins = db["wallets"].get(str_cid, 0)
-        msg = f"👤 حساب کاربری شما:\n\n🏷 نام مستعار: {u_name}\n💰 موجودی سکه: {coins}\n🆔 کد کاربری: {chat_id}"
-        send_message(chat_id, msg, get_main_keyboard(chat_id))
-        return
-
-    # دعوت از دوستان (زیرمجموعه‌گیری)
-    if text == BTN_REF_SYSTEM:
-        msg = f"👥 سیستم دعوت از دوستان:\n\nبا ارسال آیدی عددی خودتان به دوستانتان، به ازای هر ورود ۲۰ سکه هدیه بگیرید!\n\n🔗 کد دعوت (آیدی شما):\n`{chat_id}`"
-        send_message(chat_id, msg, get_main_keyboard(chat_id))
-        return
-
-    # دریافت جایزه کانال
-    if text == BTN_INFO_BONUS:
-        if str_cid in db["rewarded_info_channel"]:
-            send_message(chat_id, "🎁 شما قبلاً جایزه این کانال را دریافت کرده‌اید!", get_main_keyboard(chat_id))
-        else:
-            if check_channel_membership(chat_id, INFO_CHANNEL):
-                db["rewarded_info_channel"].append(str_cid)
-                db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + 30
-                save_db(db)
-                send_message(chat_id, "🎁 تبریک! ۳۰ سکه هدیه عضویت در کانال اطلاع‌رسانی به حساب شما واریز شد.", get_main_keyboard(chat_id))
-            else:
-                send_message(chat_id, f"⚠️ ابتدا باید در کانال زیر عضو شوید:\n{INFO_CHANNEL}\n\nسپس دوباره روی این دکمه بزنید.", get_main_keyboard(chat_id))
-        return
-
-    # گردونه شانس
-    if text == BTN_LUCKY_WHEEL:
-        last_time = db["last_lucky_wheel"].get(str_cid, 0)
-        if time.time() - last_time < 86400:
-            remaining = int((86400 - (time.time() - last_time)) / 3600)
-            send_message(chat_id, f"🎡 شما امروز از گردونه شانس استفاده کرده‌اید. لطفاً پس از {remaining} ساعت دوباره امتحان کنید.", get_main_keyboard(chat_id))
-        else:
-            prize = random.choice([10, 20, 50, 100, 0, 30])
-            db["last_lucky_wheel"][str_cid] = time.time()
-            db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + prize
-            save_db(db)
-            send_message(chat_id, f"🎡 چرخ گردونه چرخید و شما برنده {prize} سکه شدید! 🎉", get_main_keyboard(chat_id))
-        return
-
-    # سفارش جذب ممبر
-    if text == BTN_ORDER_MEMBER:
-        db.setdefault("waiting_for_order_link", []).append(str_cid)
-        save_db(db)
-        send_message(chat_id, "📢 لطفاً لینک یا آیدی کانال/گروه خود را ارسال کنید (مثلاً `@my_channel`):", get_back_keyboard())
-        return
-
-    if str_cid in db.get("waiting_for_order_link", []) and str_cid not in db.get("waiting_for_order_count", {}):
+    # پردازش مراحل انتظار (States) پیش از بررسی کلیدواژه‌ها
+    if str_cid in db.get("waiting_for_order_link", []):
         db["waiting_for_order_link"].remove(str_cid)
         db.setdefault("waiting_for_order_count", {})[str_cid] = text
         save_db(db)
@@ -282,13 +236,6 @@ def handle_update(update):
         del db["waiting_for_order_count"][str_cid]
         save_db(db)
         send_message(chat_id, f"✅ سفارش شما با موفقیت ثبت شد!\nکانال: {channel_link}\nتعداد: {count} ممبر\nهزینه کسر شده: {total_cost} سکه.", get_main_keyboard(chat_id))
-        return
-
-    # انتقال سکه
-    if text == BTN_TRANSFER:
-        db.setdefault("waiting_for_transfer_dest", {})[str_cid] = True
-        save_db(db)
-        send_message(chat_id, "💳 لطفاً آیدی عددی (Chat ID) کاربر مقصد را وارد کنید:", get_back_keyboard())
         return
 
     if str_cid in db.get("waiting_for_transfer_dest", {}) and str_cid not in db.get("waiting_for_transfer_amount", {}):
@@ -330,13 +277,6 @@ def handle_update(update):
         send_message(int(dest_id), f"💳 مبلغ {amount} سکه از طرف کاربر {chat_id} به حساب شما واریز شد!")
         return
 
-    # وارد کردن کد هدیه
-    if text == BTN_REDEEM_GIFT:
-        db.setdefault("waiting_for_redeem_code", []).append(str_cid)
-        save_db(db)
-        send_message(chat_id, "🎟 لطفاً کد هدیه خود را وارد کنید:", get_back_keyboard())
-        return
-
     if str_cid in db.get("waiting_for_redeem_code", []):
         db["waiting_for_redeem_code"].remove(str_cid)
         save_db(db)
@@ -362,34 +302,6 @@ def handle_update(update):
         send_message(chat_id, f"🎁 تبریک! کد هدیه با موفقیت اعمال شد و {gift_data['reward']} سکه به شما اضافه شد.", get_main_keyboard(chat_id))
         return
 
-    # پشتیبانی و راهنما
-    if text == BTN_SUPPORT:
-        send_message(chat_id, f"📞 پشتیبانی ادمین:\n@kia_karfarma (آیدی: {ADMIN_ID})", get_main_keyboard(chat_id))
-        return
-
-    if text == BTN_GUIDE:
-        send_message(chat_id, "❓ راهنمای کامل ربات ممبرگیر:\n1. دریافت سکه رایگان\n2. سفارش جذب ممبر برای کانال\n3. چرخش گردونه شانس روزانه\n4. انتقال سکه به دوستان و کدهای هدیه", get_main_keyboard(chat_id))
-        return
-
-    # پنل مدیریت
-    if text == BTN_ADMIN_PANEL and int(chat_id) == ADMIN_ID:
-        admin_keyboard = {
-            "keyboard": [
-                [BTN_BROADCAST, BTN_CREATE_GIFT],
-                [BTN_MAIN_MENU]
-            ],
-            "resize_keyboard": True
-        }
-        send_message(chat_id, "🛠 پنل مدیریت:", admin_keyboard)
-        return
-
-    # ساخت کد هدیه توسط ادمین
-    if text == BTN_CREATE_GIFT and int(chat_id) == ADMIN_ID:
-        db.setdefault("waiting_for_new_gift_code", []).append(str_cid)
-        save_db(db)
-        send_message(chat_id, "🎁 ساخت کد هدیه:\nلطفاً به این فرمت بفرستید:\n`کد | مقدار سکه | تعداد استفاده`\nمثال: `gift100 | 50 | 10`", get_back_keyboard())
-        return
-
     if str_cid in db.get("waiting_for_new_gift_code", []) and int(chat_id) == ADMIN_ID:
         db["waiting_for_new_gift_code"].remove(str_cid)
         save_db(db)
@@ -403,13 +315,6 @@ def handle_update(update):
             send_message(chat_id, "⚠️ فرمت اشتباه است. ساخت کد لغو شد.", get_main_keyboard(chat_id))
         return
 
-    # ارسال همگانی توسط ادمین
-    if text == BTN_BROADCAST and int(chat_id) == ADMIN_ID:
-        db.setdefault("waiting_for_broadcast", []).append(str_cid)
-        save_db(db)
-        send_message(chat_id, "📢 متن پیام همگانی را بفرستید:", get_back_keyboard())
-        return
-
     if str_cid in db.get("waiting_for_broadcast", []) and int(chat_id) == ADMIN_ID:
         db["waiting_for_broadcast"].remove(str_cid)
         save_db(db)
@@ -418,6 +323,98 @@ def handle_update(update):
             send_message(int(uid), f"📢 اطلاعیه مدیریت:\n\n{text}")
             count += 1
         send_message(chat_id, f"✅ به {count} کاربر ارسال شد.", get_main_keyboard(chat_id))
+        return
+
+    # منوی اصلی و کلیدواژه‌ها
+    if text == BTN_MY_ACCOUNT:
+        u_name = db["users_db"].get(str_cid, {}).get("name", "ثبت نشده")
+        coins = db["wallets"].get(str_cid, 0)
+        msg = f"👤 حساب کاربری شما:\n\n🏷 نام مستعار: {u_name}\n💰 موجودی سکه: {coins}\n🆔 کد کاربری: {chat_id}"
+        send_message(chat_id, msg, get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_REF_SYSTEM:
+        msg = f"👥 سیستم دعوت از دوستان:\n\nبا ارسال لینک دعوت زیر به دوستانتان، به ازای هر ورود ۲۰ سکه هدیه بگیرید!\n\n🔗 کد دعوت (آیدی شما):\n`{chat_id}`"
+        send_message(chat_id, msg, get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_EARN_COINS:
+        send_message(chat_id, "💰 بخش دریافت سکه رایگان:\nبا عضویت در کانال‌های پیشنهادی یا دعوت از دوستان می‌توانید سکه کسب کنید.", get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_INFO_BONUS:
+        if str_cid in db["rewarded_info_channel"]:
+            send_message(chat_id, "🎁 شما قبلاً جایزه این کانال را دریافت کرده‌اید!", get_main_keyboard(chat_id))
+        else:
+            if check_channel_membership(chat_id, INFO_CHANNEL):
+                db["rewarded_info_channel"].append(str_cid)
+                db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + 30
+                save_db(db)
+                send_message(chat_id, "🎁 تبریک! ۳۰ سکه هدیه عضویت در کانال اطلاع‌رسانی به حساب شما واریز شد.", get_main_keyboard(chat_id))
+            else:
+                send_message(chat_id, f"⚠️ ابتدا باید در کانال زیر عضو شوید:\n{INFO_CHANNEL}\n\nسپس دوباره روی این دکمه بزنید.", get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_LUCKY_WHEEL:
+        last_time = db["last_lucky_wheel"].get(str_cid, 0)
+        if time.time() - last_time < 86400:
+            remaining = int((86400 - (time.time() - last_time)) / 3600)
+            send_message(chat_id, f"🎡 شما امروز از گردونه شانس استفاده کرده‌اید. لطفاً پس از {remaining} ساعت دوباره امتحان کنید.", get_main_keyboard(chat_id))
+        else:
+            prize = random.choice([10, 20, 50, 100, 0, 30])
+            db["last_lucky_wheel"][str_cid] = time.time()
+            db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + prize
+            save_db(db)
+            send_message(chat_id, f"🎡 چرخ گردونه چرخید و شما برنده {prize} سکه شدید! 🎉", get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_ORDER_MEMBER:
+        db.setdefault("waiting_for_order_link", []).append(str_cid)
+        save_db(db)
+        send_message(chat_id, "📢 لطفاً لینک یا آیدی کانال/گروه خود را ارسال کنید (مثلاً `@my_channel`):", get_back_keyboard())
+        return
+
+    if text == BTN_TRANSFER:
+        db.setdefault("waiting_for_transfer_dest", {})[str_cid] = True
+        save_db(db)
+        send_message(chat_id, "💳 لطفاً آیدی عددی (Chat ID) کاربر مقصد را وارد کنید:", get_back_keyboard())
+        return
+
+    if text == BTN_REDEEM_GIFT:
+        db.setdefault("waiting_for_redeem_code", []).append(str_cid)
+        save_db(db)
+        send_message(chat_id, "🎟 لطفاً کد هدیه خود را وارد کنید:", get_back_keyboard())
+        return
+
+    if text == BTN_SUPPORT:
+        send_message(chat_id, f"📞 پشتیبانی ادمین:\n@kia_karfarma (آیدی: {ADMIN_ID})", get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_GUIDE:
+        send_message(chat_id, "❓ راهنمای کامل ربات ممبرگیر:\n1. دریافت سکه رایگان\n2. سفارش جذب ممبر برای کانال\n3. چرخش گردونه شانس روزانه\n4. انتقال سکه و کدهای هدیه", get_main_keyboard(chat_id))
+        return
+
+    if text == BTN_ADMIN_PANEL and int(chat_id) == ADMIN_ID:
+        admin_keyboard = {
+            "keyboard": [
+                [BTN_BROADCAST, BTN_CREATE_GIFT],
+                [BTN_MAIN_MENU]
+            ],
+            "resize_keyboard": True
+        }
+        send_message(chat_id, "🛠 پنل مدیریت:", admin_keyboard)
+        return
+
+    if text == BTN_CREATE_GIFT and int(chat_id) == ADMIN_ID:
+        db.setdefault("waiting_for_new_gift_code", []).append(str_cid)
+        save_db(db)
+        send_message(chat_id, "🎁 ساخت کد هدیه:\nلطفاً به این فرمت بفرستید:\n`کد | مقدار سکه | تعداد استفاده`\nمثال: `gift100 | 50 | 10`", get_back_keyboard())
+        return
+
+    if text == BTN_BROADCAST and int(chat_id) == ADMIN_ID:
+        db.setdefault("waiting_for_broadcast", []).append(str_cid)
+        save_db(db)
+        send_message(chat_id, "📢 متن پیام همگانی را بفرستید:", get_back_keyboard())
         return
 
     send_message(chat_id, "دستور نامعتبر است. از دکمه‌های زیر استفاده کنید:", get_main_keyboard(chat_id))
