@@ -62,7 +62,7 @@ def load_db():
         "user_redeemed_codes": {},
         "waiting_for_new_gift_code": [],
         "waiting_for_redeem_code": [],
-        "user_earn_target": {}  # ذخیره اطلاعات کانال فعلی که کاربر باید در آن عضو شود
+        "user_earn_target": {}
     }
 
 def save_db(data):
@@ -84,6 +84,7 @@ BTN_SUPPORT = "📞 پشتیبانی و ارتباط با ما"
 BTN_GUIDE = "❓ راهنمای استفاده"
 BTN_TRANSFER = "💳 انتقال سکه"
 BTN_ORDER_MEMBER = "📢 سفارش جذب ممبر"
+BTN_MY_ORDERS = "📋 لیست سفارش‌های من"
 BTN_LUCKY_WHEEL = "🎡 گردونه شانس"
 BTN_ADMIN_PANEL = "🛠 پنل مدیریت"
 BTN_BROADCAST = "📢 ارسال پیام همگانی"
@@ -123,10 +124,11 @@ def get_updates(offset=None):
 def get_main_keyboard(chat_id):
     keyboard = [
         [BTN_EARN_COINS, BTN_MY_ACCOUNT],
-        [BTN_REF_SYSTEM, BTN_REDEEM_GIFT],
+        [BTN_REF_SYSTEM, BTN_MY_ORDERS],
         [BTN_LUCKY_WHEEL, BTN_TRANSFER],
         [BTN_INFO_BONUS, BTN_ORDER_MEMBER],
-        [BTN_SUPPORT, BTN_GUIDE]
+        [BTN_REDEEM_GIFT, BTN_SUPPORT],
+        [BTN_GUIDE]
     ]
     if int(chat_id) == ADMIN_ID:
         keyboard.append([BTN_ADMIN_PANEL])
@@ -350,11 +352,37 @@ def handle_update(update):
         send_message(chat_id, msg, get_main_keyboard(chat_id))
         return
 
+    # بخش لیست سفارش‌های کاربر
+    if text == BTN_MY_ORDERS:
+        campaigns = db.get("campaigns_db", {})
+        user_camp = campaigns.get(str_cid)
+        
+        if not user_camp:
+            send_message(chat_id, "📋 شما در حال حاضر هیچ سفارش فعالی ثبت نکرده‌اید.", get_main_keyboard(chat_id))
+            return
+        
+        channel = user_camp.get("channel")
+        total_count = user_camp.get("count", 0)
+        remaining = user_camp.get("remaining", 0)
+        received = total_count - remaining
+        
+        status_text = "🟢 در حال انجام (فعال)" if remaining > 0 else "✅ تکمیل شده"
+        
+        msg = (
+            f"📋 جزئیات آخرین سفارش شما:\n\n"
+            f"📢 کانال/گروه: {channel}\n"
+            f"📊 تعداد کل درخواستی: {total_count} ممبر\n"
+            f"✅ جذب‌شده: {received} ممبر\n"
+            f"⏳ باقیمانده: {remaining} ممبر\n"
+            f"📌 وضعیت: {status_text}"
+        )
+        send_message(chat_id, msg, get_main_keyboard(chat_id))
+        return
+
     # بخش دریافت سکه با دکمه بررسی عضویت و بازگشت به صفحه اصلی
     if text == BTN_EARN_COINS:
         user_earn_target = db.setdefault("user_earn_target", {})
         
-        # انتخاب یک کانال رندوم جدید برای کاربر
         campaigns = db.get("campaigns_db", {})
         valid_campaigns = []
         for owner_id, camp in campaigns.items():
@@ -370,7 +398,6 @@ def handle_update(update):
         owner_id, camp = random.choice(valid_campaigns)
         target_channel = camp["channel"]
 
-        # ذخیره کانال هدف برای این کاربر
         user_earn_target[str_cid] = {
             "owner_id": owner_id,
             "channel": target_channel
@@ -476,8 +503,8 @@ def handle_update(update):
             "1️⃣ **دریافت سکه (💰):** با عضویت در کانال‌های ثبت‌شده توسط کاربران، به ازای هر کانال ۵ سکه رایگان دریافت کنید.\n"
             "2️⃣ **دعوت از دوستان (👥):** لینک یا آیدی خود را به دوستانتان بدهید؛ با ورود هر نفر، ۲۰ سکه هدیه بگیرید.\n"
             "3️⃣ **سفارش جذب ممبر (📢):** کانال خود را ثبت کنید و به ازای هر ممبر تنها ۲ سکه بپردازید.\n"
-            "4️⃣ **گردونه شانس (🎡):** هر ۲۴ ساعت یک‌بار شانس خود را برای برنده شدن سکه‌های بیشتر امتحان کنید.\n"
-            "5️⃣ **کد هدیه و انتقال (💳):** می‌توانید سکه‌های خود را به دوستانتان انتقال دهید یا از کدهای هدیه ادمین استفاده کنید."
+            "4️⃣ **لیست سفارش‌ها (📋):** وضعیت پیشرفت و تعداد ممبرهای جذب‌شده کانال خود را مشاهده کنید.\n"
+            "5️⃣ **گردونه شانس و کد هدیه (🎡):** هر روز شانس خود را امتحان کنید یا کدهای هدیه را وارد کنید."
         )
         send_message(chat_id, guide_text, get_main_keyboard(chat_id))
         return
