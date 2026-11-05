@@ -15,6 +15,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "*******")
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "1708788049"))
 INFO_CHANNEL = "@ettela_resani_member"
+SUPPORT_CHANNEL = "@ettela_resani_member" # کانال پشتیبانی و اطلاع‌رسانی
+ADMIN_USERNAME = "@kia_karfarma" # آیدی متنی پشتیبانی
 
 print(f"🚀 ربات ممبرگیر جامع بله شروع به کار کرد...", flush=True)
 
@@ -47,6 +49,7 @@ def load_db():
         "campaigns_db": {},
         "history_db": {},
         "rewarded_info_channel": [],
+        "rewarded_earn_channels": {},
         "waiting_for_name": [],
         "waiting_for_channel": [],
         "waiting_for_transfer_dest": {},
@@ -190,7 +193,7 @@ def handle_update(update):
             if str_cid not in db["users_db"]:
                 db.setdefault("waiting_for_name", []).append(str_cid)
                 save_db(db)
-                send_message(chat_id, "سلام کیا جان! خوش آمدید. لطفاً یک نام مستعار یکتا برای خودت وارد کن:", get_back_keyboard())
+                send_message(chat_id, "سلام! به ربات ممبرگیر خوش آمدید. لطفاً یک نام مستعار یکتا برای خودت وارد کن:", get_back_keyboard())
                 return
         
         if str_cid in db.get("waiting_for_name", []):
@@ -203,7 +206,7 @@ def handle_update(update):
             send_message(chat_id, f"🎉 ثبت‌نام تکمیل شد!\n۵۰ سکه هدیه ورود به حساب شما واریز شد.", get_main_keyboard(chat_id))
             return
 
-        send_message(chat_id, "سلام کیا جان! به ربات ممبرگیر خوش آمدید.", get_main_keyboard(chat_id))
+        send_message(chat_id, "سلام! به منوی اصلی ربات ممبرگیر خوش آمدید.", get_main_keyboard(chat_id))
         return
 
     # پردازش مراحل انتظار (States) پیش از بررسی کلیدواژه‌ها
@@ -211,7 +214,7 @@ def handle_update(update):
         db["waiting_for_order_link"].remove(str_cid)
         db.setdefault("waiting_for_order_count", {})[str_cid] = text
         save_db(db)
-        send_message(chat_id, "🔢 چه تعداد ممبر نیاز دارید؟ (هر ممبر ۱۰ سکه - لطفاً تعداد را به عدد وارد کنید):", get_back_keyboard())
+        send_message(chat_id, "🔢 چه تعداد ممبر نیاز دارید؟ (هر ممبر ۲ سکه - لطفاً تعداد را به عدد وارد کنید):", get_back_keyboard())
         return
 
     if str_cid in db.get("waiting_for_order_count", {}):
@@ -222,7 +225,7 @@ def handle_update(update):
             return
         
         channel_link = db["waiting_for_order_count"][str_cid]
-        total_cost = count * 10
+        total_cost = count * 2 # هر ممبر ۲ سکه
         current_coins = db["wallets"].get(str_cid, 0)
 
         if total_cost > current_coins:
@@ -339,7 +342,19 @@ def handle_update(update):
         return
 
     if text == BTN_EARN_COINS:
-        send_message(chat_id, "💰 بخش دریافت سکه رایگان:\nبا عضویت در کانال‌های پیشنهادی یا دعوت از دوستان می‌توانید سکه کسب کنید.", get_main_keyboard(chat_id))
+        sample_channel = "@sample_earn_channel"
+        user_rewarded_list = db.setdefault("rewarded_earn_channels", {}).setdefault(sample_channel, [])
+        
+        if str_cid in user_rewarded_list:
+            send_message(chat_id, f"🎁 شما قبلاً جایزه این کانال را دریافت کرده‌اید!\nبه زودی کانال‌های جدیدی اضافه خواهد شد.", get_main_keyboard(chat_id))
+        else:
+            if check_channel_membership(chat_id, sample_channel):
+                user_rewarded_list.append(str_cid)
+                db["wallets"][str_cid] = db["wallets"].get(str_cid, 0) + 5
+                save_db(db)
+                send_message(chat_id, "🎉 تبریک! عضویت شما تأیید شد و ۵ سکه به حساب شما واریز گردید.", get_main_keyboard(chat_id))
+            else:
+                send_message(chat_id, f"💰 بخش دریافت سکه رایگان:\n\nلطفاً در کانال زیر عضو شوید و سپس دوباره روی این دکمه بزنید تا **۵ سکه** پاداش بگیرید:\n🔗 {sample_channel}", get_main_keyboard(chat_id))
         return
 
     if text == BTN_INFO_BONUS:
@@ -387,11 +402,25 @@ def handle_update(update):
         return
 
     if text == BTN_SUPPORT:
-        send_message(chat_id, f"📞 پشتیبانی ادمین:\n@kia_karfarma (آیدی: {ADMIN_ID})", get_main_keyboard(chat_id))
+        support_msg = (
+            f"📞 پشتیبانی و ارتباط با ما:\n\n"
+            f"👤 آیدی پشتیبان: {ADMIN_USERNAME}\n"
+            f"📢 کانال اطلاع‌رسانی و پشتیبانی: {SUPPORT_CHANNEL}\n\n"
+            f"برای هرگونه سوال، پیشنهاد یا مشکل می‌توانید از طریق راه‌های فوق با ما در ارتباط باشید."
+        )
+        send_message(chat_id, support_msg, get_main_keyboard(chat_id))
         return
 
     if text == BTN_GUIDE:
-        send_message(chat_id, "❓ راهنمای کامل ربات ممبرگیر:\n1. دریافت سکه رایگان\n2. سفارش جذب ممبر برای کانال\n3. چرخش گردونه شانس روزانه\n4. انتقال سکه و کدهای هدیه", get_main_keyboard(chat_id))
+        guide_text = (
+            "❓ راهنمای کامل استفاده از ربات ممبرگیر:\n\n"
+            "1️⃣ **دریافت سکه (💰):** با عضویت در کانال‌های پیشنهادی، به ازای هر کانال ۵ سکه رایگان دریافت کنید.\n"
+            "2️⃣ **دعوت از دوستان (👥):** لینک یا آیدی خود را به دوستانتان بدهید؛ با ورود هر نفر، ۲۰ سکه هدیه بگیرید.\n"
+            "3️⃣ **سفارش جذب ممبر (📢):** کانال خود را ثبت کنید و به ازای هر ممبر تنها ۲ سکه بپردازید.\n"
+            "4️⃣ **گردونه شانس (🎡):** هر ۲۴ ساعت یک‌بار شانس خود را برای برنده شدن سکه‌های بیشتر امتحان کنید.\n"
+            "5️⃣ **کد هدیه و انتقال (💳):** می‌توانید سکه‌های خود را به دوستانتان انتقال دهید یا از کدهای هدیه ادمین استفاده کنید."
+        )
+        send_message(chat_id, guide_text, get_main_keyboard(chat_id))
         return
 
     if text == BTN_ADMIN_PANEL and int(chat_id) == ADMIN_ID:
